@@ -1,0 +1,293 @@
+import React, {
+  useRef,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
+import { useActivityStore } from '@/store/useActivityStore';
+import { useProfile } from '@/hooks/useProfile';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const ITEM_WIDTH = 70;
+const ITEM_SPACING = 10;
+const CENTER_OFFSET = (SCREEN_WIDTH - ITEM_WIDTH) / 2;
+
+interface UserActivity {
+  id: string;
+  activity_id: string;
+  skill_level: string;
+  activities: {
+    name: string;
+    emoji: string;
+  };
+}
+
+export function ActivityCarousel() {
+  const { activityId, setActivity } = useActivityStore();
+  const { user } = useAuth();
+  const { userSkills, loading: profileLoading, refetch } = useProfile();
+
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Track scrolling state to prevent loops
+  const isScrollingRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
+
+  const userActivities: UserActivity[] = useMemo(() => {
+    if (!userSkills || userSkills.length === 0) return [];
+    const filtered = userSkills?.filter(
+      (skill: any) => skill.activities
+    ) as unknown as UserActivity[];
+    return filtered.sort((a, b) => {
+      const nameA = a.activities?.name || '';
+      const nameB = b.activities?.name || '';
+      return nameA.localeCompare(nameB);
+    });
+  }, [userSkills]);
+
+  // Listen for Real-time database changes
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`user_activity_skills_${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_activity_skills',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          refetch();
+        }
+      )
+      .subscribe();
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [user, refetch]);
+
+  // scroll calculation with offset
+  const scrollToIndex = (index: number, animated = true) => {
+    if (scrollViewRef.current) {
+      isAutoScrollingRef.current = true;
+
+      const offset = index * (ITEM_WIDTH + ITEM_SPACING);
+
+      scrollViewRef.current.scrollTo({
+        x: offset,
+        animated: animated,
+      });
+
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 500);
+    }
+  };
+
+  useEffect(() => {
+    if (userActivities.length === 0) return;
+
+    const foundIndex = userActivities.findIndex(
+      (ua) => ua.activity_id === activityId
+    );
+
+    if (foundIndex >= 0) {
+      if (foundIndex !== currentIndex && !isScrollingRef.current) {
+        setCurrentIndex(foundIndex);
+        scrollToIndex(foundIndex, false);
+      }
+    } else {
+      const firstActivity = userActivities[0];
+      if (firstActivity && activityId !== firstActivity.activity_id) {
+        setCurrentIndex(0);
+        scrollToIndex(0, false);
+        setActivity({
+          activityId: firstActivity.activity_id,
+          activity: firstActivity.activities.name,
+          skillLevel: firstActivity.skill_level,
+          emoji: firstActivity.activities.emoji,
+        });
+      }
+    }
+  }, [activityId, userActivities, setActivity]);
+
+  const handleScrollEnd = (event: any) => {
+    if (userActivities.length === 0) return;
+    if (isAutoScrollingRef.current) return;
+
+    isScrollingRef.current = true;
+    const offsetX = event.nativeEvent.contentOffset.x;
+
+    const rawIndex = Math.round(offsetX / (ITEM_WIDTH + ITEM_SPACING));
+    const clampedIndex = Math.max(
+      0,
+      Math.min(rawIndex, userActivities.length - 1)
+    );
+
+    if (clampedIndex !== currentIndex) {
+      setCurrentIndex(clampedIndex);
+      const selected = userActivities[clampedIndex];
+      setActivity({
+        activityId: selected.activity_id,
+        activity: selected.activities.name,
+        skillLevel: selected.skill_level,
+        emoji: selected.activities.emoji,
+      });
+    }
+
+    setTimeout(() => {
+      isScrollingRef.current = false;
+    }, 100);
+  };
+
+  if (profileLoading && userActivities.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>Loading activities...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (userActivities.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No activities selected</Text>
+          <Text style={styles.emptySubtext}>
+            Add activities from your Profile tab
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        ref={scrollViewRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        // This makes it snap to the center of each item
+        snapToInterval={ITEM_WIDTH + ITEM_SPACING}
+        decelerationRate="fast"
+        onScrollEndDrag={handleScrollEnd}
+        onMomentumScrollEnd={handleScrollEnd}
+        scrollEventThrottle={16}
+        bounces={true}
+      >
+        {/* Spacer at start */}
+        <View style={{ width: CENTER_OFFSET }} />
+
+        {userActivities.map((userActivity, index) => {
+          const isSelected = index === currentIndex;
+          return (
+            <View
+              key={`${userActivity.id}-${userActivity.activity_id}`}
+              style={styles.itemContainer}
+            >
+              <View
+                style={[
+                  styles.activityItem,
+                  isSelected && styles.activityItemSelected,
+                  { opacity: isSelected ? 1 : 0.35 },
+                ]}
+              >
+                <Text style={styles.emoji}>
+                  {userActivity.activities.emoji}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.activityName,
+                  isSelected && styles.activityNameSelected,
+                ]}
+                numberOfLines={1}
+              >
+                {userActivity.activities.name}
+              </Text>
+            </View>
+          );
+        })}
+
+        {/* Spacer at end */}
+        <View style={{ width: CENTER_OFFSET }} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: 'white',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f5f5f5',
+  },
+  scrollContent: {
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  itemContainer: {
+    width: ITEM_WIDTH,
+    marginHorizontal: ITEM_SPACING / 2,
+    alignItems: 'center',
+  },
+  activityItem: {
+    width: ITEM_WIDTH,
+    height: ITEM_WIDTH,
+    borderRadius: 18,
+    backgroundColor: '#f8f8f8',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+    position: 'relative',
+  },
+  activityItemSelected: {
+    backgroundColor: '#fff5e6',
+  },
+  emoji: {
+    fontSize: 36,
+  },
+  activityName: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    color: '#999',
+    textAlign: 'center',
+  },
+  activityNameSelected: {
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  emptySubtext: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#999',
+  },
+});

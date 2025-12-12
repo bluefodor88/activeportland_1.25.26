@@ -42,6 +42,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!get().initialized) set({ loading: true });
 
     try {
+      // First, get list of blocked user IDs
+      const { data: blockedData } = await supabase
+        .from('blocked_users')
+        .select('blocked_user_id')
+        .eq('user_id', userId);
+      
+      const blockedUserIds = new Set(blockedData?.map(b => b.blocked_user_id) || []);
+
       const { data: chatsData, error } = await supabase
         .from('chats')
         .select('*')
@@ -50,8 +58,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       if (error || !chatsData) throw error;
 
+      // Filter out chats with blocked users
+      const filteredChats = chatsData.filter(chat => {
+        const otherUserId = chat.participant_1 === userId ? chat.participant_2 : chat.participant_1;
+        return !blockedUserIds.has(otherUserId);
+      });
+
       const chatPreviews = await Promise.all(
-        chatsData.map(async (chat) => {
+        filteredChats.map(async (chat) => {
           const otherUserId = chat.participant_1 === userId ? chat.participant_2 : chat.participant_1;
           const myLastRead = chat.participant_1 === userId ? chat.last_read_p1 : chat.last_read_p2;
 

@@ -38,7 +38,7 @@ export function usePeople() {
       setPeople([]);
       setLoading(false);
     }
-  }, [activityId, user, userLocation]);
+  }, [activityId, user]);
 
   const fetchPeople = async () => {
     if (!activityId || !user) {
@@ -55,6 +55,14 @@ export function usePeople() {
     }
     
     try {
+      // First, get list of blocked user IDs
+      const { data: blockedData } = await supabase
+        .from('blocked_users')
+        .select('blocked_user_id')
+        .eq('user_id', user.id);
+      
+      const blockedUserIds = new Set(blockedData?.map(b => b.blocked_user_id) || []);
+
       const { data, error } = await supabase
         .from('user_activity_skills')
         .select(`
@@ -84,7 +92,8 @@ export function usePeople() {
       } else if (data) {
         const filteredData = data?.filter(item => {
           const profileData = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
-          return profileData && item.user_id !== user.id;
+          // Filter out self and blocked users
+          return profileData && item.user_id !== user.id && !blockedUserIds.has(item.user_id);
         })
         
         const peopleWithSkills = filteredData?.map(item => {

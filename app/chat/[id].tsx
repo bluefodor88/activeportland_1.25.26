@@ -57,8 +57,9 @@ export default function ChatScreen() {
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryImages, setGalleryImages] = useState<{ uri: string }[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [showUserActionsModal, setShowUserActionsModal] = useState(false);
   
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
   const { messages, loading: messagesLoading, error: messagesError, sendMessage } = useChatMessages(chatId);
   const { inviteParticipants } = useEventParticipants();
@@ -103,6 +104,85 @@ export default function ChatScreen() {
       });
     }
     return dates;
+  };
+
+  const handleReportUser = () => {
+    setShowUserActionsModal(false);
+    const userId = id;
+    const userName = name || 'User';
+    
+    Alert.alert(
+      'Report User',
+      `Report ${userName} for inappropriate behavior?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Report',
+          style: 'destructive',
+          onPress: () => {
+            // Open email with pre-filled subject
+            const email = 'activityhubsercive@gmail.com';
+            const subject = encodeURIComponent(`Report User - ${userId}`);
+            const body = encodeURIComponent(`I would like to report user ${userName} (ID: ${userId}) for the following reason:\n\n`);
+            const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
+            
+            Linking.canOpenURL(mailtoLink).then(supported => {
+              if (supported) {
+                Linking.openURL(mailtoLink);
+              } else {
+                Alert.alert('Error', 'Please email activityhubsercive@gmail.com with subject: "Report User - ' + userId + '"');
+              }
+            });
+          }
+        }
+      ]
+    );
+  };
+
+  const handleBlockUser = async () => {
+    if (!user) return;
+    setShowUserActionsModal(false);
+    
+    const userId = id;
+    const userName = name || 'User';
+
+    Alert.alert(
+      'Block User',
+      `Block ${userName}? This will:\n• Hide all chats with this user\n• Disable messaging\n• Remove them from your people list`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Create a blocked_users record
+              const { error } = await supabase
+                .from('blocked_users')
+                .upsert({
+                  user_id: user.id,
+                  blocked_user_id: userId,
+                  created_at: new Date().toISOString(),
+                }, {
+                  onConflict: 'user_id,blocked_user_id'
+                });
+
+              if (error) {
+                console.error('Error blocking user:', error);
+                Alert.alert('Error', 'Failed to block user. Please try again.');
+              } else {
+                Alert.alert('User Blocked', `${userName} has been blocked.`, [
+                  { text: 'OK', onPress: () => router.back() }
+                ]);
+              }
+            } catch (error) {
+              console.error('Error blocking user:', error);
+              Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   // Combine all data for FlatList (memoized to prevent memory leaks)
@@ -580,11 +660,14 @@ export default function ChatScreen() {
   };
 
   useEffect(() => {
-    initializeChat();
-    if (chatId) {
-      fetchPendingInvites();
+    // Wait for auth to finish loading before initializing
+    if (!authLoading && user && id) {
+      initializeChat();
+      if (chatId) {
+        fetchPendingInvites();
+      }
     }
-  }, [id, user]);
+  }, [id, user, authLoading]);
 
   useEffect(() => {
     if (chatId) {
@@ -632,7 +715,7 @@ export default function ChatScreen() {
     }
   }, [messages.length, chatId]);
 
-  if (loading) {
+  if (authLoading || loading || messagesLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />
@@ -681,12 +764,21 @@ export default function ChatScreen() {
                 <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
-        <TouchableOpacity 
-          style={styles.scheduleButton} 
-          onPress={() => setShowScheduleModal(true)}
-        >
-                <Ionicons name="calendar" size={24} color="#FF8C42" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={styles.scheduleButton} 
+            onPress={() => setShowScheduleModal(true)}
+          >
+            <Ionicons name="calendar" size={24} color="#FF8C42" />
+            <Text style={styles.scheduleButtonText}>Invite</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.menuButton} 
+            onPress={() => setShowUserActionsModal(true)}
+          >
+            <Ionicons name="ellipsis-vertical" size={24} color="#333" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView 
@@ -899,6 +991,42 @@ export default function ChatScreen() {
         swipeToCloseEnabled={true}
         doubleTapToZoomEnabled={true}
       />
+
+      <Modal
+        visible={showUserActionsModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowUserActionsModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowUserActionsModal(false)}
+        >
+          <View style={styles.userActionsModalContent}>
+            <TouchableOpacity
+              style={styles.userActionButton}
+              onPress={handleReportUser}
+            >
+              <Ionicons name="flag-outline" size={20} color="#666" />
+              <Text style={styles.userActionText}>Report User</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.userActionButton, styles.blockActionButton]}
+              onPress={handleBlockUser}
+            >
+              <Ionicons name="ban-outline" size={20} color="#F44336" />
+              <Text style={[styles.userActionText, { color: '#F44336' }]}>Block User</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.userActionCancelButton}
+              onPress={() => setShowUserActionsModal(false)}
+            >
+              <Text style={styles.userActionCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -926,10 +1054,67 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   scheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  scheduleButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
     width: 40,
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: 8,
+  },
+  userActionsModalContent: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 8,
+    margin: 20,
+    minWidth: 200,
+    alignSelf: 'flex-end',
+    marginTop: 100,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  userActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  blockActionButton: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  userActionText: {
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    color: '#333',
+  },
+  userActionCancelButton: {
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    alignItems: 'center',
+  },
+  userActionCancelText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
   },
   keyboardContainer: {
     flex: 1,

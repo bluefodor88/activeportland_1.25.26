@@ -30,6 +30,18 @@ export function useChats() {
 // Simple function to get or create a chat - exported separately
 export async function getOrCreateChat(currentUserId: string, otherUserId: string): Promise<string | null> {
   try {
+    // Check if user is blocked
+    const { data: blockedCheck } = await supabase
+      .from('blocked_users')
+      .select('id')
+      .or(`and(user_id.eq.${currentUserId},blocked_user_id.eq.${otherUserId}),and(user_id.eq.${otherUserId},blocked_user_id.eq.${currentUserId})`)
+      .limit(1);
+
+    if (blockedCheck && blockedCheck.length > 0) {
+      console.log('Cannot create chat: user is blocked');
+      return null;
+    }
+
     // Step 1: Look for existing chat
     const { data: existingChats, error: searchError } = await supabase
       .from('chats')

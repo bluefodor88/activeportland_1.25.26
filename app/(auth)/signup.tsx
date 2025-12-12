@@ -25,6 +25,7 @@ export default function SignupScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [signupStarted, setSignupStarted] = useState(false);
@@ -92,6 +93,11 @@ export default function SignupScreen() {
         'Age Restriction',
         'You must be 18 years or older to use this app. We apologize for any inconvenience.'
       );
+      return;
+    }
+
+    if (!acceptedTerms) {
+      Alert.alert('Terms Required', 'You must accept the Terms & Safety Policies to create an account.');
       return;
     }
 
@@ -236,6 +242,50 @@ export default function SignupScreen() {
           <Text style={styles.hintText}>You must be 18 years or older to use this app</Text>
         </View>
 
+        <View style={styles.termsContainer}>
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => setAcceptedTerms(!acceptedTerms)}
+          >
+            <View style={[styles.checkbox, acceptedTerms && styles.checkboxChecked]}>
+              {acceptedTerms && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.termsText}>
+              I agree to the{' '}
+              <Text 
+                style={styles.termsLink}
+                onPress={() => {
+                  Alert.alert(
+                    'Terms & Safety Policies',
+                    `TERMS OF USE
+
+By using The Activity Hub, you agree to our community guidelines and terms.
+
+ZERO TOLERANCE POLICY
+There is zero tolerance for abusive, harmful, or inappropriate content or behavior. Violations will result in immediate account suspension or termination.
+
+REPORTING & RESPONSE
+Reports of inappropriate behavior will be reviewed within 24 hours and offending content or user access may be removed.
+
+SAFETY GUIDELINES
+• Be respectful and kind to all members
+• Report any inappropriate behavior immediately
+• Meet in public places for first-time meetups
+• Trust your instincts and prioritize your safety
+
+Full Terms: https://bluefodor88.github.io
+Privacy Policy: https://bluefodor88.github.io
+
+For support: activityhubsercive@gmail.com`
+                  );
+                }}
+              >
+                Terms & Safety Policies
+              </Text>
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           style={[
             styles.button,
@@ -364,6 +414,47 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  termsContainer: {
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#ddd',
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  checkboxChecked: {
+    backgroundColor: '#FF8C42',
+    borderColor: '#FF8C42',
+  },
+  checkmark: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  termsText: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    flex: 1,
+    lineHeight: 20,
+  },
+  termsLink: {
+    color: '#FF8C42',
+    fontFamily: 'Inter_600SemiBold',
+    textDecorationLine: 'underline',
   },
   button: {
     backgroundColor: '#FFCF56',

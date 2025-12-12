@@ -253,7 +253,7 @@ export default function ProfileScreen() {
         },
         { 
           text: 'Report Issues', 
-          onPress: () => Alert.alert('Report Issues', 'Report inappropriate behavior or content.\n\nContact: support@activityhub.com') 
+          onPress: () => Alert.alert('Report Issues', 'Report inappropriate behavior or content.\n\nContact: activityhubsercive@gmail.com') 
         },
         { text: 'Back', onPress: () => handleAppSettings() },
       ]
@@ -274,13 +274,13 @@ export default function ProfileScreen() {
         },
         { 
           text: 'Update Email', 
-          onPress: () => Alert.alert('Update Email', 'Email updates require verification.\n\nContact support@activityhub.com for assistance.') 
+          onPress: () => Alert.alert('Update Email', 'Email updates require verification.\n\nContact activityhubsercive@gmail.com for assistance.') 
         },
         { 
           text: 'Delete Account', 
           onPress: () => Alert.alert('Delete Account', 'This will permanently delete your account and all data.\n\nThis action cannot be undone.', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete Account', style: 'destructive', onPress: () => Alert.alert('Account Deletion', 'Please contact support@activityhub.com to delete your account.') }
+            { text: 'Delete Account', style: 'destructive', onPress: () => Alert.alert('Account Deletion', 'Please contact activityhubsercive@gmail.com to delete your account.') }
           ]) 
         },
         { text: 'Back', onPress: () => handleAppSettings() },
@@ -288,10 +288,37 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleTermsAndSafety = () => {
+    Alert.alert(
+      'Terms & Safety Policies',
+      `TERMS OF USE
+
+By using The Activity Hub, you agree to our community guidelines and terms.
+
+ZERO TOLERANCE POLICY
+There is zero tolerance for abusive, harmful, or inappropriate content or behavior. Violations will result in immediate account suspension or termination.
+
+REPORTING & RESPONSE
+Reports of inappropriate behavior will be reviewed within 24 hours and offending content or user access may be removed.
+
+SAFETY GUIDELINES
+• Be respectful and kind to all members
+• Report any inappropriate behavior immediately
+• Meet in public places for first-time meetups
+• Trust your instincts and prioritize your safety
+
+Full Terms: https://bluefodor88.github.io
+Privacy Policy: https://bluefodor88.github.io
+
+For support: activityhubsercive@gmail.com`,
+      [{ text: 'OK' }]
+    );
+  };
+
   const handleAboutApp = () => {
     Alert.alert(
       'About The Activity Hub',
-      'Connect with people who share your interests and activity levels.\n\nVersion: 1.0.0\nBuild: 40\n\nFor support: support@activeportland.com\n\nMade with ❤️ for the active community in Portland',
+      'Connect with people who share your interests and activity levels.\n\nVersion: 1.0.0\nBuild: 40\n\nFor support: activityhubsercive@gmail.com\n\nMade with ❤️ for the active community in Portland',
       [
         { 
           text: 'Privacy Policy', 
@@ -417,6 +444,11 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.settingItem} onPress={handleAppSettings}>
                 <Ionicons name="settings" size={20} color="#333" />
             <Text style={styles.settingText}>App Settings</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.settingItem} onPress={handleTermsAndSafety}>
+            <Ionicons name="shield-checkmark" size={20} color="#333" />
+            <Text style={styles.settingText}>Terms & Safety Policies</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingItem} onPress={handleLogout}>
@@ -583,7 +615,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activityEmoji: {
-    fontSize: 20,
+    fontSize: 40,
   },
   skillBadge: {
     paddingHorizontal: 8,

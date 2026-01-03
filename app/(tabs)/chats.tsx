@@ -17,16 +17,11 @@ import { useMeetingReminder } from '@/contexts/MeetingReminderContext';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import { ICONS } from '@/lib/helperUtils';
-import { useNotifications } from '@/hooks/useNotifications';
-
 export default function ChatsScreen() {
   const { user } = useAuth();
   const { chats, loading, refetch } = useChats();
   const { checkUpcomingMeetings } = useMeetingReminder();
   const [refreshing, setRefreshing] = useState(false);
-  
-  // Initialize notifications
-  useNotifications();
 
   // Refetches data when screen comes into focus
   useFocusEffect(

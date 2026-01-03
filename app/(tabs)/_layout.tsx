@@ -3,6 +3,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { ActivityProvider } from '@/contexts/ActivityContext';
 import { MeetingReminderProvider } from '@/contexts/MeetingReminderContext';
 import { useChats } from '@/hooks/useChats';
+import { useNotifications } from '@/hooks/useNotifications';
+import { useAuth } from '@/hooks/useAuth';
 import { View, Text, StyleSheet } from 'react-native';
 
 function ChatTabIcon({ size, color }: { size: number; color: string }) {
@@ -48,6 +50,11 @@ const styles = StyleSheet.create({
 });
 
 export default function TabLayout() {
+  const { user } = useAuth();
+  
+  // Request notification permissions as soon as user is logged in
+  useNotifications();
+
   return (
     <ActivityProvider>
       <MeetingReminderProvider>

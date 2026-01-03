@@ -92,6 +92,19 @@ async function registerForPushNotificationsAsync() {
 
 export async function sendLocalNotification(title: string, body: string, data?: any) {
   try {
+    // Ensure Android notification channel is set up
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF8C42',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+    }
+
     // Check permissions first
     const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') {

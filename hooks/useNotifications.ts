@@ -133,3 +133,96 @@ export async function sendLocalNotification(title: string, body: string, data?: 
   }
 }
 
+/**
+ * Schedule a notification for an event 1 hour before it starts
+ * This works even when the app is closed (scheduled notifications)
+ */
+export async function scheduleEventNotification(
+  meetingId: string,
+  eventDate: string,
+  eventTime: string,
+  location: string,
+  otherPersonName: string
+): Promise<string | null> {
+  try {
+    // Ensure Android notification channel is set up
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF8C42',
+        sound: 'default',
+        enableVibrate: true,
+        showBadge: true,
+      });
+    }
+
+    // Check permissions
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') {
+      const { status: newStatus } = await Notifications.requestPermissionsAsync();
+      if (newStatus !== 'granted') {
+        console.error('Cannot schedule notification - permissions denied');
+        return null;
+      }
+    }
+
+    // Calculate when to show the notification (1 hour before event)
+    const eventDateTime = new Date(`${eventDate}T${eventTime}`);
+    const notificationTime = new Date(eventDateTime.getTime() - 60 * 60 * 1000); // 1 hour before
+    const now = new Date();
+
+    // Only schedule if the notification time is in the future
+    if (notificationTime <= now) {
+      console.log('Event is too soon or already passed, not scheduling notification');
+      return null;
+    }
+
+    const secondsUntilNotification = Math.floor((notificationTime.getTime() - now.getTime()) / 1000);
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '⏰ Event Reminder',
+        body: `Your meetup with ${otherPersonName} at ${location} starts in 1 hour!`,
+        sound: true,
+        data: {
+          type: 'event_reminder',
+          meetingId,
+          eventDate,
+          eventTime,
+          location,
+        },
+      },
+      trigger: {
+        seconds: secondsUntilNotification,
+      },
+    });
+
+    console.log(`✅ Scheduled event notification for ${notificationTime.toLocaleString()}, ID: ${notificationId}`);
+    return notificationId;
+  } catch (error) {
+    console.error('❌ Error scheduling event notification:', error);
+    return null;
+  }
+}
+
+/**
+ * Cancel a scheduled notification by ID
+ */
+export async function cancelScheduledNotification(notificationId: string): Promise<void> {
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+    console.log(`✅ Cancelled notification ${notificationId}`);
+  } catch (error) {
+    console.error('❌ Error cancelling notification:', error);
+  }
+}
+
+/**
+ * Get all scheduled notifications (useful for debugging)
+ */
+export async function getAllScheduledNotifications() {
+  return await Notifications.getAllScheduledNotificationsAsync();
+}
+

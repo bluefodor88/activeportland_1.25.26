@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { sendLocalNotification } from '@/hooks/useNotifications';
+import { sendLocalNotification, scheduleEventNotification, getAllScheduledNotifications, cancelScheduledNotification } from '@/hooks/useNotifications';
 
 interface MeetingReminderContextType {
   checkUpcomingMeetings: () => Promise<void>;
@@ -18,6 +18,74 @@ export function MeetingReminderProvider({ children }: MeetingReminderProviderPro
   const { user } = useAuth();
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [notifiedMeetings, setNotifiedMeetings] = useState<Set<string>>(new Set());
+  const [scheduledNotificationIds, setScheduledNotificationIds] = useState<Map<string, string>>(new Map());
+
+  // Schedule notifications for all accepted meetings when app loads
+  useEffect(() => {
+    if (!user) return;
+
+    const scheduleAllAcceptedMeetings = async () => {
+      try {
+        const { data: meetings, error } = await supabase
+          .from('meetup_invites')
+          .select(`
+            *,
+            sender:profiles!meetup_invites_sender_id_fkey(name),
+            recipient:profiles!meetup_invites_recipient_id_fkey(name)
+          `)
+          .eq('status', 'accepted')
+          .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`);
+
+        if (error || !meetings) return;
+
+        // Get existing scheduled notifications
+        const existingNotifications = await getAllScheduledNotifications();
+        const existingMeetingIds = new Set(
+          existingNotifications
+            .map(n => n.content.data?.meetingId)
+            .filter(Boolean)
+        );
+
+        // Schedule notifications for meetings that don't have one yet
+        const newScheduledIds = new Map<string, string>();
+        for (const meeting of meetings) {
+          const meetingId = meeting.id;
+          
+          // Skip if already scheduled
+          if (existingMeetingIds.has(meetingId)) continue;
+
+          const meetingDateTime = new Date(`${meeting.event_date}T${meeting.event_time}`);
+          const oneHourBefore = new Date(meetingDateTime.getTime() - 60 * 60 * 1000);
+          const now = new Date();
+
+          // Only schedule if the notification time is in the future
+          if (oneHourBefore > now) {
+            const otherPersonName = meeting.sender_id === user.id 
+              ? meeting.recipient?.name 
+              : meeting.sender?.name;
+            
+            const notificationId = await scheduleEventNotification(
+              meetingId,
+              meeting.event_date,
+              meeting.event_time,
+              meeting.location,
+              otherPersonName || 'Someone'
+            );
+
+            if (notificationId) {
+              newScheduledIds.set(meetingId, notificationId);
+            }
+          }
+        }
+
+        setScheduledNotificationIds(prev => new Map([...prev, ...newScheduledIds]));
+      } catch (error) {
+        console.error('Error scheduling meeting notifications:', error);
+      }
+    };
+
+    scheduleAllAcceptedMeetings();
+  }, [user]);
 
   const checkUpcomingMeetings = async () => {
     if (!user) return;

@@ -12,12 +12,24 @@ export function useAuth() {
       try {
         const { data: { session }, error } = await supabase.auth.getSession()
         if (error) {
-          console.error('Error getting session:', error)
+          // Suppress refresh token errors when there's no session (expected)
+          if (error.message?.includes('Refresh Token') || error.message?.includes('refresh_token')) {
+            // This is expected when there's no user - don't log as error
+            setUser(null)
+          } else {
+            console.error('Error getting session:', error)
+          }
+        } else {
+          setUser(session?.user ?? null)
         }
-        setUser(session?.user ?? null)
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        setUser(null)
+      } catch (error: any) {
+        // Suppress refresh token errors
+        if (error?.message?.includes('Refresh Token') || error?.message?.includes('refresh_token')) {
+          setUser(null)
+        } else {
+          console.error('Error initializing auth:', error)
+          setUser(null)
+        }
       } finally {
         setLoading(false)
       }
@@ -29,11 +41,23 @@ export function useAuth() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         try {
+          // Suppress refresh token errors
+          if (event === 'TOKEN_REFRESHED' && !session) {
+            // Expected when there's no session
+            setUser(null)
+            setLoading(false)
+            return
+          }
           setUser(session?.user ?? null)
           setLoading(false)
-        } catch (error) {
-          console.error('Error handling auth state change:', error)
-          setUser(null)
+        } catch (error: any) {
+          // Suppress refresh token errors
+          if (error?.message?.includes('Refresh Token') || error?.message?.includes('refresh_token')) {
+            setUser(null)
+          } else {
+            console.error('Error handling auth state change:', error)
+            setUser(null)
+          }
           setLoading(false)
         }
       }

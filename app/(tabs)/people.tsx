@@ -18,6 +18,7 @@ import { usePeople } from '@/hooks/usePeople';
 import { useLocationTracking } from '@/hooks/useLocationTracking';
 import { getOrCreateChat } from '@/hooks/useChats';
 import { useAuth } from '@/hooks/useAuth';
+import { requireAuth } from '@/lib/authHelpers';
 import { ActivityCarousel } from '@/components/ActivityCarousel';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ICONS } from '@/lib/helperUtils';
@@ -45,7 +46,11 @@ export default function PeopleScreen() {
   };
 
   const openChat = async (userId: string, userName: string) => {
-    if (!user) return;
+    // Require login for messaging
+    if (!user) {
+      requireAuth('message users');
+      return;
+    }
     
     try {
       const chatId = await getOrCreateChat(user.id, userId);
@@ -74,6 +79,12 @@ export default function PeopleScreen() {
   };
 
   const handleReportUser = (userId: string, userName: string) => {
+    // Require login for reporting
+    if (!user) {
+      requireAuth('report users');
+      return;
+    }
+
     Alert.alert(
       'Report User',
       `Report ${userName} for inappropriate behavior?`,
@@ -103,7 +114,11 @@ export default function PeopleScreen() {
   };
 
   const handleBlockUser = async (userId: string, userName: string) => {
-    if (!user) return;
+    // Require login for blocking
+    if (!user) {
+      requireAuth('block users');
+      return;
+    }
 
     Alert.alert(
       'Block User',

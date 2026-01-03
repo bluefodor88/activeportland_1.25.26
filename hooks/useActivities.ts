@@ -25,7 +25,7 @@ export function useActivities() {
           'Tennis',
           'Pickleball', 
           'Rock Climbing',
-          'Hiking',
+          'Hiking/Walking',
           'Running', 
           'Cycling',
           'Yoga',

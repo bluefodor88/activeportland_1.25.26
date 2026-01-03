@@ -41,9 +41,11 @@ export function useChatMessages(chatId: string | null) {
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             console.log('Successfully subscribed to chat messages')
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error('Error subscribing to chat messages')
-            setError('Failed to connect to real-time updates')
+            setError(null) // Clear any previous errors
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            console.warn('Realtime subscription issue:', status)
+            // Don't set error - messages will still load via polling
+            // Real-time is a nice-to-have, not critical
           }
         })
 
@@ -128,7 +130,7 @@ export function useChatMessages(chatId: string | null) {
         setMessages([])
       } else {
         setMessages(data || [])
-        setError(null)
+        setError(null) // Clear any errors when messages load successfully
       }
     } catch (error) {
       console.error('Error fetching chat messages:', error)

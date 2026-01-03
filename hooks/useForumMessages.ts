@@ -79,13 +79,18 @@ export function useForumMessages(activityId?: string) {
           )
         `)
         .eq('activity_id', activityId)
-        .eq('profiles.user_activity_skills.activity_id', activityId)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setMessages(data || [])
+      if (error) {
+        console.error('Error fetching forum messages:', error)
+        setMessages([])
+      } else {
+        console.log(`Fetched ${data?.length || 0} forum messages for activity ${activityId}`)
+        setMessages(data || [])
+      }
     } catch (error) {
       console.error('Error fetching messages:', error)
+      setMessages([])
     } finally {
       if (showLoading) setLoading(false)
     }

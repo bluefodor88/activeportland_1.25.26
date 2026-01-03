@@ -59,7 +59,7 @@ export default function ChatScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [showUserActionsModal, setShowUserActionsModal] = useState(false);
   
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
   const { messages, loading: messagesLoading, error: messagesError, sendMessage } = useChatMessages(chatId);
   const { inviteParticipants } = useEventParticipants();
@@ -660,14 +660,11 @@ export default function ChatScreen() {
   };
 
   useEffect(() => {
-    // Wait for auth to finish loading before initializing
-    if (!authLoading && user && id) {
-      initializeChat();
-      if (chatId) {
-        fetchPendingInvites();
-      }
+    initializeChat();
+    if (chatId) {
+      fetchPendingInvites();
     }
-  }, [id, user, authLoading]);
+  }, [id, user]);
 
   useEffect(() => {
     if (chatId) {
@@ -715,7 +712,7 @@ export default function ChatScreen() {
     }
   }, [messages.length, chatId]);
 
-  if (authLoading || loading || messagesLoading) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <StatusBar style="dark" />

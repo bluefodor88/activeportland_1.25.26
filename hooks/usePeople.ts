@@ -32,7 +32,7 @@ export function usePeople() {
 
   // Effect 2: Fetch People when dependencies change
   useEffect(() => {
-    if (activityId && user) {
+    if (activityId) {
       fetchPeople();
     } else {
       setPeople([]);
@@ -41,7 +41,7 @@ export function usePeople() {
   }, [activityId, user]);
 
   const fetchPeople = async () => {
-    if (!activityId || !user) {
+    if (!activityId) {
       setLoading(false)
       return
     }
@@ -55,13 +55,16 @@ export function usePeople() {
     }
     
     try {
-      // First, get list of blocked user IDs
-      const { data: blockedData } = await supabase
-        .from('blocked_users')
-        .select('blocked_user_id')
-        .eq('user_id', user.id);
-      
-      const blockedUserIds = new Set(blockedData?.map(b => b.blocked_user_id) || []);
+      // Get list of blocked user IDs (only if user is logged in)
+      let blockedUserIds = new Set<string>();
+      if (user) {
+        const { data: blockedData } = await supabase
+          .from('blocked_users')
+          .select('blocked_user_id')
+          .eq('user_id', user.id);
+        
+        blockedUserIds = new Set(blockedData?.map(b => b.blocked_user_id) || []);
+      }
 
       const { data, error } = await supabase
         .from('user_activity_skills')
@@ -92,8 +95,11 @@ export function usePeople() {
       } else if (data) {
         const filteredData = data?.filter(item => {
           const profileData = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
-          // Filter out self and blocked users
-          return profileData && item.user_id !== user.id && !blockedUserIds.has(item.user_id);
+          // Filter out self (only if user is logged in) and blocked users
+          if (!profileData) return false;
+          if (user && item.user_id === user.id) return false;
+          if (blockedUserIds.has(item.user_id)) return false;
+          return true;
         })
         
         const peopleWithSkills = filteredData?.map(item => {

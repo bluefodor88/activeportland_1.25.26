@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useActivityStore } from '@/store/useActivityStore';
 import { useProfile } from '@/hooks/useProfile';
+import { useActivities } from '@/hooks/useActivities';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 
@@ -28,10 +29,19 @@ interface UserActivity {
   };
 }
 
+interface ActivityItem {
+  id: string;
+  activity_id: string;
+  name: string;
+  emoji: string;
+  skill_level?: string;
+}
+
 export function ActivityCarousel() {
   const { activityId, setActivity } = useActivityStore();
   const { user } = useAuth();
   const { userSkills, loading: profileLoading, refetch } = useProfile();
+  const { activities: allActivities, loading: activitiesLoading } = useActivities();
 
   const scrollViewRef = useRef<ScrollView>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -42,21 +52,44 @@ export function ActivityCarousel() {
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch])
+      // Only refetch if user is logged in
+      if (user) {
+        refetch();
+      }
+    }, [refetch, user])
   );
 
-  const userActivities: UserActivity[] = useMemo(() => {
-    if (!userSkills || userSkills.length === 0) return [];
-    const filtered = userSkills?.filter(
-      (skill: any) => skill.activities
-    ) as unknown as UserActivity[];
-    return filtered.sort((a, b) => {
-      const nameA = a.activities?.name || '';
-      const nameB = b.activities?.name || '';
-      return nameA.localeCompare(nameB);
-    });
-  }, [userSkills]);
+  // When logged in: show user's activities
+  // When not logged in: show all activities
+  const displayActivities: ActivityItem[] = useMemo(() => {
+    if (user) {
+      // User is logged in - show their activities
+      if (!userSkills || userSkills.length === 0) return [];
+      const filtered = userSkills?.filter(
+        (skill: any) => skill.activities
+      ) as unknown as UserActivity[];
+      return filtered.map(skill => ({
+        id: skill.id,
+        activity_id: skill.activity_id,
+        name: skill.activities.name,
+        emoji: skill.activities.emoji,
+        skill_level: skill.skill_level,
+      })).sort((a, b) => {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        return nameA.localeCompare(nameB);
+      });
+    } else {
+      // User is not logged in - show all activities
+      if (!allActivities || allActivities.length === 0) return [];
+      return allActivities.map(activity => ({
+        id: activity.id,
+        activity_id: activity.id,
+        name: activity.name,
+        emoji: activity.emoji,
+      }));
+    }
+  }, [user, userSkills, allActivities]);
 
   // Listen for Real-time database changes
   useEffect(() => {
@@ -100,10 +133,10 @@ export function ActivityCarousel() {
   };
 
   useEffect(() => {
-    if (userActivities.length === 0) return;
+    if (displayActivities.length === 0) return;
 
-    const foundIndex = userActivities.findIndex(
-      (ua) => ua.activity_id === activityId
+    const foundIndex = displayActivities.findIndex(
+      (activity) => activity.activity_id === activityId
     );
 
     if (foundIndex >= 0) {
@@ -112,22 +145,23 @@ export function ActivityCarousel() {
         scrollToIndex(foundIndex, false);
       }
     } else {
-      const firstActivity = userActivities[0];
+      // If current activity is not in the list, select the first one
+      const firstActivity = displayActivities[0];
       if (firstActivity && activityId !== firstActivity.activity_id) {
         setCurrentIndex(0);
         scrollToIndex(0, false);
         setActivity({
           activityId: firstActivity.activity_id,
-          activity: firstActivity.activities.name,
-          skillLevel: firstActivity.skill_level,
-          emoji: firstActivity.activities.emoji,
+          activity: firstActivity.name,
+          skillLevel: firstActivity.skill_level || 'Beginner',
+          emoji: firstActivity.emoji,
         });
       }
     }
-  }, [activityId, userActivities, setActivity]);
+  }, [activityId, displayActivities, setActivity, currentIndex]);
 
   const handleScrollEnd = (event: any) => {
-    if (userActivities.length === 0) return;
+    if (displayActivities.length === 0) return;
     if (isAutoScrollingRef.current) return;
 
     isScrollingRef.current = true;
@@ -136,17 +170,17 @@ export function ActivityCarousel() {
     const rawIndex = Math.round(offsetX / (ITEM_WIDTH + ITEM_SPACING));
     const clampedIndex = Math.max(
       0,
-      Math.min(rawIndex, userActivities.length - 1)
+      Math.min(rawIndex, displayActivities.length - 1)
     );
 
     if (clampedIndex !== currentIndex) {
       setCurrentIndex(clampedIndex);
-      const selected = userActivities[clampedIndex];
+      const selected = displayActivities[clampedIndex];
       setActivity({
         activityId: selected.activity_id,
-        activity: selected.activities.name,
-        skillLevel: selected.skill_level,
-        emoji: selected.activities.emoji,
+        activity: selected.name,
+        skillLevel: selected.skill_level || 'Beginner',
+        emoji: selected.emoji,
       });
     }
 
@@ -155,7 +189,9 @@ export function ActivityCarousel() {
     }, 100);
   };
 
-  if (profileLoading && userActivities.length === 0) {
+  const isLoading = user ? profileLoading : activitiesLoading;
+
+  if (isLoading && displayActivities.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.emptyContainer}>
@@ -165,13 +201,17 @@ export function ActivityCarousel() {
     );
   }
 
-  if (userActivities.length === 0) {
+  if (displayActivities.length === 0) {
     return (
       <View style={styles.container}>
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No activities selected</Text>
+          <Text style={styles.emptyText}>
+            {user ? 'No activities selected' : 'No activities available'}
+          </Text>
           <Text style={styles.emptySubtext}>
-            Add activities from your Profile tab
+            {user 
+              ? 'Add activities from your Profile tab'
+              : 'Please try again later'}
           </Text>
         </View>
       </View>
@@ -196,11 +236,11 @@ export function ActivityCarousel() {
         {/* Spacer at start */}
         <View style={{ width: CENTER_OFFSET }} />
 
-        {userActivities.map((userActivity, index) => {
+        {displayActivities.map((activity, index) => {
           const isSelected = index === currentIndex;
           return (
             <View
-              key={`${userActivity.id}-${userActivity.activity_id}`}
+              key={`${activity.id}-${activity.activity_id}`}
               style={styles.itemContainer}
             >
               <View
@@ -211,7 +251,7 @@ export function ActivityCarousel() {
                 ]}
               >
                 <Text style={styles.emoji}>
-                  {userActivity.activities.emoji}
+                  {activity.emoji}
                 </Text>
               </View>
               <Text
@@ -221,7 +261,7 @@ export function ActivityCarousel() {
                 ]}
                 numberOfLines={1}
               >
-                {userActivity.activities.name}
+                {activity.name}
               </Text>
             </View>
           );

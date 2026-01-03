@@ -66,6 +66,11 @@ export default function LoginScreen() {
       <View style={styles.form}>
         <Text style={styles.title}>Welcome Back</Text>
 
+        {/* App Explanation */}
+        <Text style={styles.infoText}>
+          Choose your activities, join community forums, and connect with people in your area ready to meet up!
+        </Text>
+
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Email</Text>
           <TextInput
@@ -108,6 +113,13 @@ export default function LoginScreen() {
             Don't have an account?{' '}
             <Text style={styles.linkTextBold}>Sign Up</Text>
           </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.browseButton}
+          onPress={() => router.replace('/(tabs)/forum')}
+        >
+          <Text style={styles.browseText}>Browse without login</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAwareScrollView>
@@ -220,5 +232,22 @@ const styles = StyleSheet.create({
   linkTextBold: {
     fontFamily: 'Inter_700Bold',
     color: '#FF8C42',
+  },
+  browseButton: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  browseText: {
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
+    fontSize: 14,
+  },
+  infoText: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 24,
   },
 });

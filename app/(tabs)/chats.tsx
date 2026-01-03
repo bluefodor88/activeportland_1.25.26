@@ -15,12 +15,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { useChats } from '@/hooks/useChats';
 import { useMeetingReminder } from '@/contexts/MeetingReminderContext';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { useAuth } from '@/hooks/useAuth';
 import { ICONS } from '@/lib/helperUtils';
+import { useNotifications } from '@/hooks/useNotifications';
 
 export default function ChatsScreen() {
+  const { user } = useAuth();
   const { chats, loading, refetch } = useChats();
   const { checkUpcomingMeetings } = useMeetingReminder();
   const [refreshing, setRefreshing] = useState(false);
+  
+  // Initialize notifications
+  useNotifications();
 
   // Refetches data when screen comes into focus
   useFocusEffect(
@@ -83,6 +89,32 @@ export default function ChatsScreen() {
       )}
     </TouchableOpacity>
   );
+
+  // Require login for chats (account-based feature)
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="dark" />
+        <View style={styles.header}>
+          <View style={styles.headerGradient} />
+          <Text style={styles.title}>Chats</Text>
+        </View>
+        <View style={styles.emptyState}>
+          <Ionicons name="chatbubble" size={64} color="#ccc" />
+          <Text style={styles.emptyTitle}>Sign in to view your chats</Text>
+          <Text style={styles.emptySubtitle}>
+            Sign in to start messaging with other users
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.loginButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading && !refreshing && chats.length === 0) {
     return (
@@ -265,5 +297,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
     color: '#666',
+  },
+  loginButton: {
+    backgroundColor: '#FF8C42',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  loginButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
 });

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { sendLocalNotification } from '@/hooks/useNotifications';
 
 export interface ChatPreview {
   id: string;
@@ -134,9 +135,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
     subscription = supabase
       .channel('public:chat_updates')
       // Listen for NEW messages
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, () => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async (payload) => {
         console.log("🔔 New message received! Refreshing...");
         get().fetchChats(userId);
+
+        // Send local notification if not from current user and chat is not active
+        const newMessage = payload.new as { sender_id: string; chat_id: string; message: string };
+        const currentUserId = userId;
+        const activeChat = get().activeChatId;
+
+        if (newMessage.sender_id !== currentUserId && newMessage.chat_id !== activeChat) {
+          const chat = get().chats.find(c => c.id === newMessage.chat_id);
+          if (chat) {
+            await sendLocalNotification(
+              `New message from ${chat.name}`,
+              newMessage.message || '📷 Photo',
+              {
+                type: 'new_message',
+                chatId: chat.id,
+                otherUserId: chat.otherUserId,
+                userName: chat.name,
+              }
+            );
+          }
+        }
       })
       // Listen for Read Status updates (when you read it on another device)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, () => {

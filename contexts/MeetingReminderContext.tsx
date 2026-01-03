@@ -2,9 +2,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { sendLocalNotification } from '@/hooks/useNotifications';
 
 interface MeetingReminderContextType {
-  checkUpcomingMeetings: () => void;
+  checkUpcomingMeetings: () => Promise<void>;
 }
 
 const MeetingReminderContext = createContext<MeetingReminderContextType | null>(null);
@@ -16,6 +17,7 @@ interface MeetingReminderProviderProps {
 export function MeetingReminderProvider({ children }: MeetingReminderProviderProps) {
   const { user } = useAuth();
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [notifiedMeetings, setNotifiedMeetings] = useState<Set<string>>(new Set());
 
   const checkUpcomingMeetings = async () => {
     if (!user) return;
@@ -43,29 +45,50 @@ export function MeetingReminderProvider({ children }: MeetingReminderProviderPro
         return meetingDateTime > now && meetingDateTime <= oneHourFromNow;
       });
 
-      // Show alert for upcoming meetings (only if we haven't checked recently)
+      // Send notifications for upcoming meetings (only once per meeting)
       if (upcomingMeetings.length > 0) {
-        const shouldShowAlert = !lastChecked || 
-          (now.getTime() - lastChecked.getTime()) > 30 * 60 * 1000; // 30 minutes
-
-        if (shouldShowAlert) {
-          const meeting = upcomingMeetings[0]; // Show first upcoming meeting
-          const otherPersonName = meeting.sender_id === user.id 
-            ? meeting.recipient?.name 
-            : meeting.sender?.name;
+        setNotifiedMeetings(prev => {
+          const newNotified = new Set(prev);
           
-          const meetingDateTime = new Date(`${meeting.event_date}T${meeting.event_time}`);
-          const minutesUntil = Math.floor((meetingDateTime.getTime() - now.getTime()) / (1000 * 60));
-
-          Alert.alert(
-            '⏰ Meeting Reminder',
-            `Your meeting with ${otherPersonName} at ${meeting.location} starts in ${minutesUntil} minutes!`,
-            [{ text: 'OK', style: 'default' }]
-          );
-
-          setLastChecked(now);
-        }
+          upcomingMeetings.forEach(meeting => {
+            const meetingId = meeting.id;
+            
+            // Skip if we've already notified about this meeting
+            if (newNotified.has(meetingId)) return;
+            
+            const otherPersonName = meeting.sender_id === user.id 
+              ? meeting.recipient?.name 
+              : meeting.sender?.name;
+            
+            const meetingDateTime = new Date(`${meeting.event_date}T${meeting.event_time}`);
+            const minutesUntil = Math.floor((meetingDateTime.getTime() - now.getTime()) / (1000 * 60));
+            
+            // Send push notification
+            sendLocalNotification(
+              '⏰ Event Reminder',
+              `Your meetup with ${otherPersonName} at ${meeting.location} starts in ${minutesUntil} minutes!`,
+              { meetingId, type: 'event_reminder' }
+            );
+            
+            // Mark as notified
+            newNotified.add(meetingId);
+          });
+          
+          return newNotified;
+        });
       }
+      
+      // Clean up old meeting IDs from notified set (meetings that have passed)
+      const currentMeetingIds = new Set(meetings.map(m => m.id));
+      setNotifiedMeetings(prev => {
+        const cleaned = new Set<string>();
+        prev.forEach(id => {
+          if (currentMeetingIds.has(id)) {
+            cleaned.add(id);
+          }
+        });
+        return cleaned;
+      });
     } catch (error) {
       console.error('Error checking upcoming meetings:', error);
     }

@@ -21,6 +21,10 @@ import { supabase } from '@/lib/supabase';
 import { useCallback } from 'react';
 import { ActivitySelectionModal } from '@/components/ActivitySelectionModal';
 import { ICONS } from '@/lib/helperUtils';
+import Constants from 'expo-constants';
+import { sendLocalNotification } from '@/hooks/useNotifications';
+import * as Notifications from 'expo-notifications';
+import { Linking, Platform } from 'react-native';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -216,18 +220,168 @@ export default function ProfileScreen() {
     );
   };
 
-  const handleNotificationSettings = () => {
+  const handleNotificationSettings = async () => {
+    // Check current notification permission status
+    const { status } = await Notifications.getPermissionsAsync();
+    const isEnabled = status === 'granted';
+    const statusText = isEnabled ? 'Enabled' : 'Disabled';
+    
     Alert.alert(
       'Notification Settings',
-      'Configure your notification preferences',
+      `Configure your notification preferences\n\nCurrent Status: ${statusText}`,
       [
         { 
           text: 'Meeting Reminders', 
-          onPress: () => Alert.alert('Meeting Reminders', 'Get notified 1 hour before scheduled meetups.\n\nCurrently: Enabled') 
+          onPress: () => {
+            Alert.alert(
+              'Meeting Reminders', 
+              'Get notified 1 hour before scheduled meetups.\n\nStatus: ' + statusText,
+              [
+                { text: 'OK' },
+                ...(isEnabled ? [] : [{
+                  text: 'Enable in Settings',
+                  onPress: () => {
+                    if (Platform.OS === 'ios') {
+                      Linking.openURL('app-settings:');
+                    } else {
+                      Linking.openSettings();
+                    }
+                  }
+                }])
+              ]
+            );
+          }
         },
         { 
           text: 'New Messages', 
-          onPress: () => Alert.alert('New Messages', 'Get notified when you receive new chat messages.\n\nCurrently: Enabled') 
+          onPress: () => {
+            Alert.alert(
+              'New Messages', 
+              'Get notified when you receive new chat messages.\n\nStatus: ' + statusText,
+              [
+                { text: 'OK' },
+                ...(isEnabled ? [] : [{
+                  text: 'Enable in Settings',
+                  onPress: () => {
+                    if (Platform.OS === 'ios') {
+                      Linking.openURL('app-settings:');
+                    } else {
+                      Linking.openSettings();
+                    }
+                  }
+                }])
+              ]
+            );
+          }
+        },
+        {
+          text: isEnabled ? 'Disable Notifications' : 'Enable Notifications',
+          onPress: async () => {
+            if (isEnabled) {
+              // Open phone settings to disable
+              Alert.alert(
+                'Disable Notifications',
+                'To disable notifications, please turn them off in your phone settings.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Open Settings',
+                    onPress: () => {
+                      if (Platform.OS === 'ios') {
+                        Linking.openURL('app-settings:');
+                      } else {
+                        Linking.openSettings();
+                      }
+                    }
+                  }
+                ]
+              );
+            } else {
+              // Request permissions
+              const { status: newStatus } = await Notifications.requestPermissionsAsync();
+              if (newStatus === 'granted') {
+                Alert.alert('✅ Enabled', 'Notifications have been enabled!');
+              } else {
+                Alert.alert(
+                  'Permission Denied',
+                  'To enable notifications, please allow them in your phone settings.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Open Settings',
+                      onPress: () => {
+                        if (Platform.OS === 'ios') {
+                          Linking.openURL('app-settings:');
+                        } else {
+                          Linking.openSettings();
+                        }
+                      }
+                    }
+                  ]
+                );
+              }
+            }
+          }
+        },
+        { 
+          text: '🧪 Test Notifications', 
+          onPress: () => {
+            Alert.alert(
+              'Test Notifications',
+              'Choose a notification type to test',
+              [
+                {
+                  text: 'Test Message Notification',
+                  onPress: async () => {
+                    try {
+                      await sendLocalNotification(
+                        'New message from Test User',
+                        'This is a test message notification!',
+                        { type: 'new_message', chatId: 'test', otherUserId: 'test', userName: 'Test User' }
+                      );
+                      Alert.alert('✅ Sent', 'Message notification sent!');
+                    } catch (error) {
+                      console.error('Error:', error);
+                      Alert.alert('❌ Error', 'Failed to send notification.');
+                    }
+                  }
+                },
+                {
+                  text: 'Test Event Reminder',
+                  onPress: async () => {
+                    try {
+                      await sendLocalNotification(
+                        '⏰ Event Reminder',
+                        'Your meetup with Test User at Test Location starts in 60 minutes!',
+                        { type: 'event_reminder', meetingId: 'test' }
+                      );
+                      Alert.alert('✅ Sent', 'Event reminder sent!');
+                    } catch (error) {
+                      console.error('Error:', error);
+                      Alert.alert('❌ Error', 'Failed to send notification.');
+                    }
+                  }
+                },
+                {
+                  text: 'Test Basic Notification',
+                  onPress: async () => {
+                    try {
+                      await sendLocalNotification(
+                        'Test Notification',
+                        'This is a basic test notification!',
+                        { type: 'test' }
+                      );
+                      Alert.alert('✅ Sent', 'Basic notification sent!');
+                    } catch (error) {
+                      console.error('Error:', error);
+                      Alert.alert('❌ Error', 'Failed to send notification.');
+                    }
+                  }
+                },
+                { text: 'Cancel', style: 'cancel' }
+              ]
+            );
+          }
         },
         { text: 'Back', onPress: () => handleAppSettings() },
       ]
@@ -316,9 +470,11 @@ For support: activityhubsercive@gmail.com`,
   };
 
   const handleAboutApp = () => {
+    const buildNumber = Constants.expoConfig?.ios?.buildNumber || Constants.manifest?.ios?.buildNumber || 'Unknown';
+    const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
     Alert.alert(
       'About The Activity Hub',
-      'Connect with people who share your interests and activity levels.\n\nVersion: 1.0.0\nBuild: 40\n\nFor support: activityhubsercive@gmail.com\n\nMade with ❤️ for the active community in Portland',
+      `Connect with people who share your interests and activity levels.\n\nVersion: ${version}\nBuild: ${buildNumber}\n\nFor support: activityhubsercive@gmail.com\n\nMade with ❤️ for the active community in Portland`,
       [
         { 
           text: 'Privacy Policy', 
@@ -332,6 +488,28 @@ For support: activityhubsercive@gmail.com`,
       ]
     );
   };
+
+  // Require login for profile (account-based feature)
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <StatusBar style="dark" />
+        <View style={styles.loadingContainer}>
+          <Ionicons name="person" size={64} color="#ccc" style={{ marginBottom: 16 }} />
+          <Text style={styles.emptyTitle}>Sign in to view your profile</Text>
+          <Text style={styles.emptySubtitle}>
+            Sign in to manage your activities and settings
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.loginButtonText}>Sign In</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return (
@@ -628,10 +806,7 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   removeButton: {
-    backgroundColor: '#ffebee',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    // No background, just text
   },
   removeText: {
     fontSize: 12,
@@ -658,5 +833,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
     paddingVertical: 20,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  loginButton: {
+    backgroundColor: '#FF8C42',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  loginButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
 });

@@ -178,3 +178,4 @@ BEGIN
   RAISE NOTICE '  Chats: %', chat_count;
 END $$;
 
+

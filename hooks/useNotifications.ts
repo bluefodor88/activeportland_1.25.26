@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { useAuth } from './useAuth';
+import { supabase } from '@/lib/supabase';
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -20,10 +22,14 @@ export function useNotifications() {
   useEffect(() => {
     if (!user) return; // Only request permissions if user is logged in
     
-    // Request permissions
+    // Request permissions and register push token
     registerForPushNotificationsAsync().then(token => {
       if (token) {
         console.log('Push notification token:', token);
+        // Store the token in the database
+        storePushToken(user.id, token).catch(error => {
+          console.error('Error storing push token:', error);
+        });
       } else {
         console.log('No push token - using local notifications only');
       }
@@ -58,8 +64,6 @@ export function useNotifications() {
 }
 
 async function registerForPushNotificationsAsync() {
-  let token;
-
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'default',
@@ -79,15 +83,55 @@ async function registerForPushNotificationsAsync() {
   
   if (finalStatus !== 'granted') {
     console.log('Failed to get push token for push notification!');
-    return;
+    return null;
   }
 
-  // For local notifications, we don't need the token
-  // But if you want push notifications later, you can get it here:
-  // token = (await Notifications.getExpoPushTokenAsync()).data;
-  // console.log('Expo Push Token:', token);
-  
-  return token;
+  // Get Expo push token
+  try {
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.error('Expo project ID not found in app.json');
+      return null;
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: projectId,
+    });
+    
+    return tokenData.data;
+  } catch (error) {
+    console.error('Error getting Expo push token:', error);
+    return null;
+  }
+}
+
+/**
+ * Store push token in the database
+ */
+async function storePushToken(userId: string, expoPushToken: string) {
+  try {
+    // Use upsert to update if token exists, insert if new
+    const { error } = await supabase
+      .from('push_tokens')
+      .upsert(
+        {
+          user_id: userId,
+          expo_push_token: expoPushToken,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'user_id,expo_push_token',
+        }
+      );
+
+    if (error) {
+      console.error('Error storing push token:', error);
+    } else {
+      console.log('✅ Push token stored successfully');
+    }
+  } catch (error) {
+    console.error('Error in storePushToken:', error);
+  }
 }
 
 export async function sendLocalNotification(title: string, body: string, data?: any) {

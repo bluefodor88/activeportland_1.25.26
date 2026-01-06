@@ -78,4 +78,3 @@ CREATE TRIGGER update_push_tokens_updated_at
   BEFORE UPDATE ON push_tokens
   FOR EACH ROW
   EXECUTE FUNCTION update_push_tokens_updated_at();
-

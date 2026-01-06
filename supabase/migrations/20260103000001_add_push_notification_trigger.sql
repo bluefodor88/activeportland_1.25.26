@@ -71,11 +71,18 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger (this just prepares the data, webhook does the actual HTTP call)
-DROP TRIGGER IF EXISTS trigger_prepare_push_notification ON chat_messages;
-CREATE TRIGGER trigger_prepare_push_notification
-  AFTER INSERT ON chat_messages
-  FOR EACH ROW
-  EXECUTE FUNCTION prepare_push_notification();
+-- Note: Using IF NOT EXISTS equivalent by checking if trigger exists first
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_prepare_push_notification'
+  ) THEN
+    CREATE TRIGGER trigger_prepare_push_notification
+      AFTER INSERT ON chat_messages
+      FOR EACH ROW
+      EXECUTE FUNCTION prepare_push_notification();
+  END IF;
+END $$;
 
 /*
   IMPORTANT: To complete the setup, you need to:

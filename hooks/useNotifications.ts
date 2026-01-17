@@ -20,21 +20,28 @@ export function useNotifications() {
   const responseListener = useRef<Notifications.Subscription>();
 
   useEffect(() => {
-    if (!user) return; // Only request permissions if user is logged in
+    if (!user) {
+      console.log('⏸️ No user logged in, skipping push token registration');
+      return; // Only request permissions if user is logged in
+    }
+    
+    console.log('🚀 Starting push notification registration for user:', user.id);
     
     // Request permissions and register push token
     registerForPushNotificationsAsync().then(token => {
       if (token) {
-        console.log('Push notification token:', token);
+        console.log('✅ Push notification token received:', token.substring(0, 30) + '...');
         // Store the token in the database
         storePushToken(user.id, token).catch(error => {
-          console.error('Error storing push token:', error);
+          console.error('❌ Error storing push token:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
         });
       } else {
-        console.log('No push token - using local notifications only');
+        console.warn('⚠️ No push token received - check permissions and project ID');
       }
     }).catch(error => {
-      console.error('Error registering for notifications:', error);
+      console.error('❌ Error registering for notifications:', error);
+      console.error('Error stack:', error.stack);
     });
 
     // Listener for notifications received while app is foregrounded
@@ -88,19 +95,45 @@ async function registerForPushNotificationsAsync() {
 
   // Get Expo push token
   try {
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    // Try multiple ways to get project ID (works in dev and production)
+    let projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    
+    // Fallback: try Constants.manifest if expoConfig doesn't work
+    if (!projectId && (Constants as any).manifest?.extra?.eas?.projectId) {
+      projectId = (Constants as any).manifest.extra.eas.projectId;
+    }
+    
+    // Fallback: hardcode if needed (from app.json)
     if (!projectId) {
-      console.error('Expo project ID not found in app.json');
+      projectId = '08f6f8e6-0c4c-497a-988f-6b6b895984fe'; // From app.json
+      console.log('⚠️ Using hardcoded project ID as fallback');
+    }
+    
+    console.log('🔍 Looking for Expo project ID...');
+    console.log('Constants.expoConfig:', Constants.expoConfig ? 'exists' : 'null');
+    console.log('Project ID found:', projectId);
+    
+    if (!projectId) {
+      console.error('❌ Expo project ID not found anywhere!');
       return null;
     }
 
+    console.log('✅ Using project ID:', projectId);
+    console.log('📞 Requesting Expo push token...');
+    
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: projectId,
     });
     
+    console.log('✅ Expo push token received:', tokenData.data.substring(0, 30) + '...');
     return tokenData.data;
-  } catch (error) {
-    console.error('Error getting Expo push token:', error);
+  } catch (error: any) {
+    console.error('❌ Error getting Expo push token:', error);
+    console.error('Error message:', error?.message);
+    console.error('Error code:', error?.code);
+    if (error?.stack) {
+      console.error('Error stack:', error.stack);
+    }
     return null;
   }
 }

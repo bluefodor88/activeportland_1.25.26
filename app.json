@@ -24,7 +24,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.campbell3c2.activeportland",
-      "buildNumber": "71",
+      "buildNumber": "72",
+      "entitlements": {
+        "aps-environment": "production"
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "The Activity Hub uses the camera to let you take a profile photo, helping other activity partners recognize you at meetups and creating a safer, more connected community experience.",

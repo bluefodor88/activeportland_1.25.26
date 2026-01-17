@@ -324,6 +324,66 @@ export default function ProfileScreen() {
           }
         },
         { 
+          text: '🔍 Debug Push Token', 
+          onPress: async () => {
+            try {
+              const { status } = await Notifications.getPermissionsAsync();
+              const permissionStatus = status === 'granted' ? '✅ Granted' : `❌ ${status}`;
+              
+              // Try to get push token
+              let tokenInfo = 'Not generated';
+              try {
+                const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                                 (Constants as any).manifest?.extra?.eas?.projectId ||
+                                 '08f6f8e6-0c4c-497a-988f-6b6b895984fe';
+                
+                if (status === 'granted') {
+                  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+                  tokenInfo = tokenData.data.substring(0, 40) + '...';
+                  
+                  // Check if stored in database
+                  if (user) {
+                    const { data: storedTokens } = await supabase
+                      .from('push_tokens')
+                      .select('expo_push_token')
+                      .eq('user_id', user.id);
+                    
+                    const storedInfo = storedTokens && storedTokens.length > 0 
+                      ? `✅ Stored (${storedTokens.length} token(s))` 
+                      : '❌ Not stored in database';
+                    
+                    Alert.alert(
+                      'Push Token Debug Info',
+                      `Permission: ${permissionStatus}\n\nToken: ${tokenInfo}\n\nDatabase: ${storedInfo}\n\nProject ID: ${projectId.substring(0, 20)}...`,
+                      [{ text: 'OK' }]
+                    );
+                  } else {
+                    Alert.alert(
+                      'Push Token Debug Info',
+                      `Permission: ${permissionStatus}\n\nToken: ${tokenInfo}\n\nUser: Not logged in`,
+                      [{ text: 'OK' }]
+                    );
+                  }
+                } else {
+                  Alert.alert(
+                    'Push Token Debug Info',
+                    `Permission: ${permissionStatus}\n\nToken: Cannot generate (permission denied)\n\nPlease enable notifications in Settings.`,
+                    [{ text: 'OK' }]
+                  );
+                }
+              } catch (error: any) {
+                Alert.alert(
+                  'Push Token Debug Info',
+                  `Permission: ${permissionStatus}\n\nToken Error: ${error?.message || 'Unknown error'}\n\nCheck console for details.`,
+                  [{ text: 'OK' }]
+                );
+              }
+            } catch (error: any) {
+              Alert.alert('Error', `Failed to get debug info: ${error?.message}`);
+            }
+          }
+        },
+        { 
           text: '🧪 Test Notifications', 
           onPress: () => {
             Alert.alert(

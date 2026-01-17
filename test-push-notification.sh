@@ -5,7 +5,9 @@
 
 # Get these from Supabase Dashboard → Settings → API
 SUPABASE_URL="https://krhmxspcxymovgorumqw.supabase.co"
-SERVICE_ROLE_KEY="YOUR_SERVICE_ROLE_KEY_HERE"  # Replace with your service role key
+# Get your service role key from: Supabase Dashboard → Settings → API → service_role key
+# Replace the line below with your actual service role key
+SERVICE_ROLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyaG14c3BjeHltb3Znb3J1bXF3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MzMwODMzOCwiZXhwIjoyMDY4ODg0MzM4fQ.xG2jGu9q3-YBpPedaGUBF2GAs8Bda-qk8jFpzv5bt2Y"
 
 USER_ID=$1
 TITLE=$2

@@ -110,8 +110,13 @@ async function registerForPushNotificationsAsync() {
  */
 async function storePushToken(userId: string, expoPushToken: string) {
   try {
+    console.log('📱 Attempting to store push token:', {
+      userId,
+      token: expoPushToken.substring(0, 20) + '...', // Log first 20 chars only
+    });
+
     // Use upsert to update if token exists, insert if new
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('push_tokens')
       .upsert(
         {
@@ -122,15 +127,17 @@ async function storePushToken(userId: string, expoPushToken: string) {
         {
           onConflict: 'user_id,expo_push_token',
         }
-      );
+      )
+      .select();
 
     if (error) {
-      console.error('Error storing push token:', error);
+      console.error('❌ Error storing push token:', error);
+      console.error('Error details:', JSON.stringify(error, null, 2));
     } else {
-      console.log('✅ Push token stored successfully');
+      console.log('✅ Push token stored successfully:', data);
     }
   } catch (error) {
-    console.error('Error in storePushToken:', error);
+    console.error('❌ Exception in storePushToken:', error);
   }
 }
 

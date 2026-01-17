@@ -24,9 +24,13 @@ serve(async (req) => {
       });
     }
 
-    const { recipientUserId, title, body, data } = await req.json();
+    const requestBody = await req.json();
+    console.log("📥 Received request:", JSON.stringify(requestBody, null, 2));
+    
+    const { recipientUserId, title, body, data } = requestBody;
 
     if (!recipientUserId || !title || !body) {
+      console.error("❌ Missing required fields:", { recipientUserId, title, body });
       return new Response(
         JSON.stringify({ error: "Missing required fields: recipientUserId, title, body" }),
         {
@@ -35,6 +39,8 @@ serve(async (req) => {
         }
       );
     }
+    
+    console.log("✅ Request validated, looking up push tokens for user:", recipientUserId);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -59,15 +65,21 @@ serve(async (req) => {
     }
 
     if (!pushTokens || pushTokens.length === 0) {
-      console.log(`No push tokens found for user ${recipientUserId}`);
+      console.warn(`⚠️ No push tokens found for user ${recipientUserId}`);
       return new Response(
-        JSON.stringify({ message: "No push tokens found for user", sent: 0 }),
+        JSON.stringify({ 
+          message: "No push tokens found for user", 
+          sent: 0,
+          userId: recipientUserId 
+        }),
         {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }
       );
     }
+    
+    console.log(`✅ Found ${pushTokens.length} push token(s) for user ${recipientUserId}`);
 
     // Prepare notifications for all tokens (user might have multiple devices)
     const notifications: PushNotificationPayload[] = pushTokens.map((token) => ({
@@ -79,6 +91,7 @@ serve(async (req) => {
     }));
 
     // Send to Expo Push Notification API
+    console.log(`📤 Sending ${notifications.length} notification(s) to Expo API...`);
     const response = await fetch(EXPO_PUSH_API_URL, {
       method: "POST",
       headers: {
@@ -90,6 +103,7 @@ serve(async (req) => {
     });
 
     const result = await response.json();
+    console.log("📥 Expo API response:", JSON.stringify(result, null, 2));
 
     if (!response.ok) {
       console.error("Expo API error:", result);

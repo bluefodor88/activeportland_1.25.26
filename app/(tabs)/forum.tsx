@@ -301,6 +301,7 @@ export default function ForumScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            )}
           </>
         )}
       </KeyboardAvoidingView>

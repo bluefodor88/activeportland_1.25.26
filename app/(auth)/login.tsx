@@ -106,6 +106,13 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={styles.signUpButton}
+          onPress={() => router.push('/(auth)/signup')}
+        >
+          <Text style={styles.signUpButtonText}>Create Account</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.linkButton}
           onPress={() => router.push('/(auth)/signup')}
         >
@@ -216,6 +223,18 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+  },
+  signUpButton: {
+    backgroundColor: '#FF8C42',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  signUpButtonText: {
     color: 'white',
     fontSize: 16,
     fontFamily: 'Inter_700Bold',

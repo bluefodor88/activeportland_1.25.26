@@ -2,6 +2,7 @@ import { ActivityCarousel } from '@/components/ActivityCarousel';
 import ForumMessageItem from '@/components/ForumMessageItem';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
+import { router } from 'expo-router';
 import { getOrCreateChat } from '@/hooks/useChats';
 import { useForumMessages } from '@/hooks/useForumMessages';
 import { useProfile } from '@/hooks/useProfile';
@@ -216,7 +217,21 @@ export default function ForumScreen() {
 
         {activityId && (
           <>
-            {replyingTo && (
+            {!user && (
+              <View style={styles.loginPrompt}>
+                <Text style={styles.loginPromptText}>
+                  Sign in to join the conversation
+                </Text>
+                <TouchableOpacity
+                  style={styles.loginPromptButton}
+                  onPress={() => router.push('/(auth)/login')}
+                >
+                  <Text style={styles.loginPromptButtonText}>Sign In</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {user && replyingTo && (
               <View style={styles.replyPreview}>
                 <View style={styles.replyPreviewHeader}>
                   <Ionicons name="arrow-undo" size={16} color="#FF8C42" />
@@ -237,7 +252,8 @@ export default function ForumScreen() {
               </View>
             )}
 
-            <View style={styles.inputWrapper}>
+            {user && (
+              <View style={styles.inputWrapper}>
               {selectedImages.length > 0 && (
                 <ScrollView horizontal contentContainerStyle={styles.previewContainer} showsHorizontalScrollIndicator={false}>
                   {selectedImages.map((uri, index) => (

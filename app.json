@@ -50,7 +50,7 @@
         "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "package": "com.campbell3c2.activeportland",
-      "versionCode": 23
+      "versionCode": 24
     },
     "web": {
       "bundler": "metro"

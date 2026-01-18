@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from './useAuth';
 import { supabase } from '@/lib/supabase';
+import { router } from 'expo-router';
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -52,7 +53,24 @@ export function useNotifications() {
     // Listener for when user taps on notification
     responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('Notification tapped:', response);
-      // You can navigate to the chat here if needed
+      const data = response.notification.request.content.data;
+      
+      // Navigate based on notification type
+      if (data?.type === 'new_message' && data?.otherUserId) {
+        // Navigate to the chat screen
+        router.push({
+          pathname: '/chat/[id]',
+          params: { 
+            id: data.otherUserId, 
+            name: data.userName || 'User' 
+          },
+        });
+      } else if (data?.type === 'event_reminder' && data?.meetingId) {
+        // For event reminders, we need to find the chat associated with this meeting
+        // The meeting data should include the other person's user ID
+        // For now, navigate to chats tab - we can enhance this to go directly to the chat
+        router.push('/(tabs)/chats');
+      }
     });
 
     return () => {
@@ -265,23 +283,24 @@ export async function scheduleEventNotification(
 
     const secondsUntilNotification = Math.floor((notificationTime.getTime() - now.getTime()) / 1000);
 
-    const notificationId = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '⏰ Event Reminder',
-        body: `Your meetup with ${otherPersonName} at ${location} starts in 1 hour!`,
-        sound: true,
-        data: {
-          type: 'event_reminder',
-          meetingId,
-          eventDate,
-          eventTime,
-          location,
-        },
-      },
-      trigger: {
-        seconds: secondsUntilNotification,
-      },
-    });
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: '⏰ Event Reminder',
+            body: `Your meetup with ${otherPersonName} at ${location} starts in 1 hour!`,
+            sound: true,
+            data: {
+              type: 'event_reminder',
+              meetingId,
+              eventDate,
+              eventTime,
+              location,
+              otherPersonName,
+            },
+          },
+          trigger: {
+            seconds: secondsUntilNotification,
+          },
+        });
 
     console.log(`✅ Scheduled event notification for ${notificationTime.toLocaleString()}, ID: ${notificationId}`);
     return notificationId;

@@ -2,7 +2,6 @@ import { ActivityCarousel } from '@/components/ActivityCarousel';
 import ForumMessageItem from '@/components/ForumMessageItem';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
-import { router } from 'expo-router';
 import { getOrCreateChat } from '@/hooks/useChats';
 import { useForumMessages } from '@/hooks/useForumMessages';
 import { useProfile } from '@/hooks/useProfile';

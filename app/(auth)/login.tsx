@@ -145,6 +145,7 @@ const styles = StyleSheet.create({
     fontSize: isSmallDevice ? 32 : isMediumDevice ? 40 : 48,
     fontFamily: 'Inter_800ExtraBold',
     fontStyle: 'italic',
+    fontWeight: 'bold',
     textShadowColor: 'rgba(255, 140, 66, 0.3)',
     textShadowOffset: { width: 2, height: 2 },
     textShadowRadius: 4,
@@ -184,6 +185,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
     color: '#333',
     marginBottom: 24,
     textAlign: 'center',

@@ -222,6 +222,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
   },
   accountPromptText: {
     fontFamily: 'Inter_400Regular',
@@ -243,6 +244,7 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
   },
   browseButton: {
     marginTop: 12,

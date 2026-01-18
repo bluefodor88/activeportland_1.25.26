@@ -105,21 +105,15 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
+        <Text style={styles.accountPromptText}>
+          Don't have an account?
+        </Text>
+
         <TouchableOpacity
           style={styles.signUpButton}
           onPress={() => router.push('/(auth)/signup')}
         >
           <Text style={styles.signUpButtonText}>Create Account</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => router.push('/(auth)/signup')}
-        >
-          <Text style={styles.linkText}>
-            Don't have an account?{' '}
-            <Text style={styles.linkTextBold}>Sign Up</Text>
-          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -218,6 +212,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
+    alignSelf: 'center',
+    minWidth: 200,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -227,30 +223,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
   },
+  accountPromptText: {
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 16,
+  },
   signUpButton: {
     backgroundColor: '#FF8C42',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 8,
+    alignSelf: 'center',
+    minWidth: 200,
   },
   signUpButtonText: {
     color: 'white',
     fontSize: 16,
     fontFamily: 'Inter_700Bold',
-  },
-  linkButton: {
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  linkText: {
-    fontFamily: 'Inter_400Regular',
-    color: '#666',
-    fontSize: 14,
-  },
-  linkTextBold: {
-    fontFamily: 'Inter_700Bold',
-    color: '#FF8C42',
   },
   browseButton: {
     marginTop: 12,

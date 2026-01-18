@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { ScrollView } from 'react-native';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375; // iPhone SE and smaller
@@ -46,7 +46,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAwareScrollView
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContainer}
       keyboardShouldPersistTaps={'handled'}
@@ -129,7 +129,7 @@ export default function LoginScreen() {
           <Text style={styles.browseText}>Browse without login</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAwareScrollView>
+    </ScrollView>
   );
 }
 

@@ -64,8 +64,6 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.form}>
-        <Text style={styles.title}>Welcome Back</Text>
-
         {/* App Explanation */}
         <Text style={styles.infoText}>
           Choose your activities, join community forums, and connect with people in your area ready to meet up!

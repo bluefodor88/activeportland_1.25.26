@@ -325,7 +325,7 @@ For support: activityhubsercive@gmail.com`
         }}
         isSignup={true}
       />
-    </KeyboardAwareScrollView>
+    </ScrollView>
   );
 }
 

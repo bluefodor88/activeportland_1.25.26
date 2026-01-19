@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { ScrollView } from 'react-native';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375; // iPhone SE and smaller
@@ -154,7 +154,7 @@ export default function SignupScreen() {
   };
 
   return (
-    <KeyboardAwareScrollView
+    <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContainer}
       keyboardShouldPersistTaps={'handled'}

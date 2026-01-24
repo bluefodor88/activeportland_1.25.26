@@ -44,8 +44,8 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <Stack screenOptions={{ headerShown: false }} />
       <StatusBar style="auto" />
+      <Stack screenOptions={{ headerShown: false }} />
     </ErrorBoundary>
   );
 }

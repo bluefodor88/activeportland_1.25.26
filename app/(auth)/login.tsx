@@ -207,13 +207,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f9f9f9',
   },
   button: {
-    backgroundColor: '#FFCF56',
-    padding: 16,
+    backgroundColor: '#FF8C42',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
     alignSelf: 'center',
-    minWidth: 200,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -232,13 +232,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   signUpButton: {
-    backgroundColor: '#FF8C42',
-    padding: 16,
+    backgroundColor: '#FFCF56',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
     alignSelf: 'center',
-    minWidth: 200,
   },
   signUpButtonText: {
     color: 'white',

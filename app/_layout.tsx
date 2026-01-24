@@ -11,7 +11,6 @@ import {
   Inter_800ExtraBold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
-import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
@@ -45,10 +44,8 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <KeyboardProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-        <StatusBar style="auto" />
-      </KeyboardProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar style="auto" />
     </ErrorBoundary>
   );
 }

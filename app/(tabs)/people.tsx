@@ -11,7 +11,7 @@ import {
   Alert,
   Linking,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +29,7 @@ import { supabase } from '@/lib/supabase';
 export default function PeopleScreen() {
   const { user } = useAuth();
   const { requestLocationPermission } = useLocationTracking();
+  const insets = useSafeAreaInsets();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -267,7 +268,7 @@ export default function PeopleScreen() {
           </View>
         )}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(insets.bottom, 20) + 90 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 

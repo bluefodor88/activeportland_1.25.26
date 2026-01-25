@@ -10,6 +10,7 @@ interface PersonWithSkill {
   email: string
   avatar_url: string | null
   skill_level: string
+  ready_today: boolean
   distance: string
   distanceValue: number 
 }
@@ -73,6 +74,7 @@ export function usePeople() {
           user_id,
           activity_id,
           skill_level,
+          ready_today,
           profiles!user_activity_skills_user_id_fkey (
             id,
             name,
@@ -111,6 +113,7 @@ export function usePeople() {
             email: profile.email,
             avatar_url: profile.avatar_url,
             skill_level: item.skill_level,
+            ready_today: item.ready_today || false,
             distance: calculateDistanceForUser(profile, currentLoc), 
             distanceValue: calculateDistanceValueForUser(profile, currentLoc)
           };

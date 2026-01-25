@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   FlatList,
+  SectionList,
   StyleSheet,
   Image,
   RefreshControl,
@@ -32,6 +33,30 @@ export default function PeopleScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const { people, loading, refetch } = usePeople();
+
+  // Split people into "Ready Today" and "Others" sections
+  const sections = useMemo(() => {
+    const readyToday = people.filter(p => p.ready_today === true);
+    const others = people.filter(p => !p.ready_today || p.ready_today === false);
+
+    const sections = [];
+    
+    // Always show "Ready Today" section, even if empty
+    sections.push({
+      title: 'Ready Today',
+      data: readyToday,
+    });
+    
+    // Only show "Others" section if there are people
+    if (others.length > 0) {
+      sections.push({
+        title: 'Others',
+        data: others,
+      });
+    }
+
+    return sections;
+  }, [people]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -228,9 +253,19 @@ export default function PeopleScreen() {
         </View>
       </View>
 
-      <FlatList
-        data={people ?? []}
+      <SectionList
+        sections={sections}
         renderItem={renderUser}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{section.title}</Text>
+            {section.title === 'Ready Today' && (
+              <View style={styles.readyTodayBadge}>
+                <Text style={styles.readyTodayBadgeText}>{section.data.length}</Text>
+              </View>
+            )}
+          </View>
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
@@ -292,6 +327,30 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     padding: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  readyTodayBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  readyTodayBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
   },
   userCard: {
     flexDirection: 'row',

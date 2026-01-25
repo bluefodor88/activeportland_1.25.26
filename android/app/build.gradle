@@ -92,8 +92,8 @@ android {
         applicationId 'com.campbell3c2.activeportland'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 25
-        versionName "1.0.7"
+        versionCode 26
+        versionName "1.0.8"
     }
     signingConfigs {
         debug {

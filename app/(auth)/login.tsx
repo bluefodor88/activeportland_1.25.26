@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: 'Inter_700Bold',
     fontWeight: 'bold',
-    color: '#333',
+    color: '#888',
     lineHeight: 26,
     textAlign: 'center',
     marginBottom: 24,

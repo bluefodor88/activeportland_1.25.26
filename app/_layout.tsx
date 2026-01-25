@@ -39,7 +39,7 @@ export default function RootLayout() {
   }, [fontsLoaded]);
 
   if (!fontsLoaded) {
-    return null;
+    return null; // Show splash screen while fonts load
   }
 
   return (

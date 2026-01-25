@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
   Alert,
+  Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useActivities } from '@/hooks/useActivities';
@@ -33,10 +34,11 @@ export function ActivitySelectionModal({
   isSignup = false,
 }: ActivitySelectionModalProps) {
   const { activities, loading } = useActivities();
-  const { updateSkillLevel } = useProfile();
+  const { updateSkillLevel, updateReadyToday } = useProfile();
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showSkillModal, setShowSkillModal] = useState(false);
   const [selectedSkillLevel, setSelectedSkillLevel] = useState<string | null>(null);
+  const [readyToday, setReadyToday] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const getSkillColor = (skillLevel: string) => {
@@ -55,6 +57,7 @@ export function ActivitySelectionModal({
   const handleActivitySelect = (activity: any) => {
     setSelectedActivity(activity);
     setSelectedSkillLevel(null);
+    setReadyToday(false);
     setShowSkillModal(true);
   };
 
@@ -84,6 +87,10 @@ export function ActivitySelectionModal({
 
       if(!isSignup){
         await updateSkillLevel(selection.activityId, selection.skillLevel);
+        // Update ready_today if toggle is on
+        if (readyToday) {
+          await updateReadyToday(selection.activityId, true);
+        }
       }
 
       // Return selection to parent to handle account creation & DB writes
@@ -95,6 +102,7 @@ export function ActivitySelectionModal({
       setShowSkillModal(false);
       setSelectedActivity(null);
       setSelectedSkillLevel(null);
+      setReadyToday(false);
     } catch (error) {
       console.error('Error in handleSubmit:', error);
       Alert.alert(
@@ -208,6 +216,17 @@ export function ActivitySelectionModal({
                       </View>
                     </TouchableOpacity>
                   ))}
+                </View>
+
+                <View style={styles.readyTodayContainer}>
+                  <Text style={styles.readyTodayLabel}>Ready today</Text>
+                  <Switch
+                    value={readyToday}
+                    onValueChange={setReadyToday}
+                    trackColor={{ false: '#e0e0e0', true: '#4CAF50' }}
+                    thumbColor={readyToday ? '#fff' : '#f4f3f4'}
+                    ios_backgroundColor="#e0e0e0"
+                  />
                 </View>
 
                 <TouchableOpacity
@@ -441,5 +460,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
     color: '#666',
+  },
+  readyTodayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  readyTodayLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter_500Medium',
+    color: '#333',
   },
 });

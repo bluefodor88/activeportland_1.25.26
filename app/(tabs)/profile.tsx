@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -28,7 +29,7 @@ import { Linking, Platform } from 'react-native';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
-  const { profile, userSkills, loading, uploading, updateSkillLevel, uploadProfileImage, refetch } = useProfile();
+  const { profile, userSkills, loading, uploading, updateSkillLevel, updateReadyToday, uploadProfileImage, refetch } = useProfile();
   const { activities } = useActivities();
   const [showActivityModal, setShowActivityModal] = useState(false);
 
@@ -640,6 +641,16 @@ For support: activityhubsercive@gmail.com`,
                   </View>
                 </TouchableOpacity>
                 <View style={styles.skillItemActions}>
+                  <View style={styles.readyTodayContainer}>
+                    <Text style={styles.readyTodayLabel}>Ready today</Text>
+                    <Switch
+                      value={userSkill.ready_today || false}
+                      onValueChange={(value) => updateReadyToday(userSkill.activity_id, value)}
+                      trackColor={{ false: '#e0e0e0', true: '#4CAF50' }}
+                      thumbColor={userSkill.ready_today ? '#fff' : '#f4f3f4'}
+                      ios_backgroundColor="#e0e0e0"
+                    />
+                  </View>
                   <TouchableOpacity
                     style={styles.removeButton}
                     onPress={() => handleRemoveActivity(userSkill.activity_id, userSkill.activities!.name)}
@@ -834,10 +845,20 @@ const styles = StyleSheet.create({
   },
   skillItemActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
+  },
+  readyTodayContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  readyTodayLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#666',
   },
   skillInfo: {
     flexDirection: 'row',

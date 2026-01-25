@@ -2,7 +2,7 @@
   "expo": {
     "name": "The Activity Hub",
     "slug": "activeportland",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/images/icon.png",
@@ -24,7 +24,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.campbell3c2.activeportland",
-      "buildNumber": "78",
+      "buildNumber": "79",
       "entitlements": {
         "aps-environment": "production"
       },

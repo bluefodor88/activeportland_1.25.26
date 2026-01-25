@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import type { Profile, UserActivitySkill } from '@/types/database'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export function useProfile() {
   const { user } = useAuth()
@@ -45,6 +46,7 @@ export function useProfile() {
           user_id,
           activity_id,
           skill_level,
+          ready_today,
           created_at,
           updated_at,
           activities (
@@ -100,7 +102,7 @@ export function useProfile() {
         user_id: targetUserId,
         activity_id: activityId,
         skill_level: skillLevel,
-        ready_today: false,
+        ready_today: false, // Default to false for new entries
       }
 
       if (checkError && checkError.code !== 'PGRST116') {
@@ -110,12 +112,12 @@ export function useProfile() {
 
       let error
       if (existing) {
-        // Row exists, update it
+        // Row exists, update it but preserve ready_today status
         const { error: updateError } = await supabase
           .from('user_activity_skills')
           .update({
             skill_level: skillLevel,
-            ready_today: false,
+            // Don't reset ready_today when updating skill level
           })
           .eq('user_id', targetUserId)
           .eq('activity_id', activityId)
@@ -215,6 +217,73 @@ export function useProfile() {
     }
   };
 
+  const updateReadyToday = async (activityId: string, readyToday: boolean) => {
+    if (!user) return false;
+
+    try {
+      const { error } = await supabase
+        .from('user_activity_skills')
+        .update({ ready_today: readyToday })
+        .eq('user_id', user.id)
+        .eq('activity_id', activityId);
+
+      if (error) {
+        console.error('Error updating ready_today:', error);
+        return false;
+      }
+
+      // Refresh skills to show updated state
+      await fetchUserSkills();
+      return true;
+    } catch (error) {
+      console.error('Error updating ready_today:', error);
+      return false;
+    }
+  };
+
+  // Reset all ready_today flags at the end of the day
+  const resetReadyTodayIfNewDay = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      // Get the last reset date from AsyncStorage
+      const lastResetDate = await AsyncStorage.getItem(`ready_reset_date_${user.id}`);
+      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+      // If we've already reset today, don't do it again
+      if (lastResetDate === today) {
+        return;
+      }
+
+      // Reset all ready_today flags to false
+      const { error } = await supabase
+        .from('user_activity_skills')
+        .update({ ready_today: false })
+        .eq('user_id', user.id)
+        .eq('ready_today', true);
+
+      if (error) {
+        console.error('Error resetting ready_today:', error);
+        return;
+      }
+
+      // Store today's date as the last reset date
+      await AsyncStorage.setItem(`ready_reset_date_${user.id}`, today);
+
+      // Refresh skills to show updated state
+      await fetchUserSkills();
+    } catch (error) {
+      console.error('Error in resetReadyTodayIfNewDay:', error);
+    }
+  }, [user, fetchUserSkills]);
+
+  // Check and reset on mount and when user changes
+  useEffect(() => {
+    if (user) {
+      resetReadyTodayIfNewDay();
+    }
+  }, [user, resetReadyTodayIfNewDay]);
+
   const refetch = useCallback(() => {
     fetchProfile()
     fetchUserSkills()
@@ -226,6 +295,7 @@ export function useProfile() {
     loading,
     uploading,
     updateSkillLevel,
+    updateReadyToday,
     removeActivity,
     uploadProfileImage,
     refetch

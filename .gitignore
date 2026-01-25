@@ -39,3 +39,12 @@ yarn-error.*
 .env.local
 .env.production
 .env.staging
+
+# Credentials and secrets
+credentials.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!app.json
+!eas.json

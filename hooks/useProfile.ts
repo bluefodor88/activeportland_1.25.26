@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Alert } from 'react-native'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import type { Profile, UserActivitySkill } from '@/types/database'
@@ -221,6 +222,24 @@ export function useProfile() {
     if (!user) return false;
 
     try {
+      // Show one-time explanation the first time a user turns on "Ready today"
+      if (readyToday) {
+        try {
+          const infoKey = `ready_today_info_shown_${user.id}`
+          const alreadyShown = await AsyncStorage.getItem(infoKey)
+
+          if (!alreadyShown) {
+            Alert.alert(
+              'Ready today',
+              'Ready today will switch off at end of day. Select ready today again, tomorrow, to show you’re active.'
+            )
+            await AsyncStorage.setItem(infoKey, 'true')
+          }
+        } catch (e) {
+          console.error('Error showing Ready today info:', e)
+        }
+      }
+
       const { error } = await supabase
         .from('user_activity_skills')
         .update({ ready_today: readyToday })

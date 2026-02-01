@@ -134,6 +134,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     
     subscription = supabase
       .channel('public:chat_updates')
+      // Listen for NEW chats being created (check if current user is a participant)
+      .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'chats'
+      }, async (payload) => {
+        const newChat = payload.new as { participant_1: string; participant_2: string };
+        // Only refresh if current user is a participant
+        if (newChat.participant_1 === userId || newChat.participant_2 === userId) {
+          console.log("🔔 New chat created! Refreshing...");
+          get().fetchChats(userId);
+        }
+      })
       // Listen for NEW messages
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, async (payload) => {
         console.log("🔔 New message received! Refreshing...");

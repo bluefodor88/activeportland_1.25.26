@@ -186,7 +186,16 @@ export default function PeopleScreen() {
   };
 
   const renderUser = ({ item }: { item: any }) => (
-    <View style={styles.userCard}>
+    <TouchableOpacity
+      style={styles.userCard}
+      activeOpacity={0.9}
+      onPress={() =>
+        router.push({
+          pathname: '/(tabs)/people/[id]',
+          params: { id: item.id, name: item.name },
+        })
+      }
+    >
       <Image source={ item?.avatar_url ? { uri: item.avatar_url } : ICONS.profileIcon } style={styles.avatar} />
       <View style={styles.userInfo}>
         <View style={styles.userNameRow}>
@@ -224,7 +233,7 @@ export default function PeopleScreen() {
       >
         <Ionicons name="chatbubble" size={20} color="white" />
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
   if (loading) {

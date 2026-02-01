@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { ScrollView } from 'react-native';
+import { ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 
 const { width } = Dimensions.get('window');
 const isSmallDevice = width < 375; // iPhone SE and smaller
@@ -154,13 +154,18 @@ export default function SignupScreen() {
   };
 
   return (
-    <ScrollView
+    <KeyboardAvoidingView
       style={styles.container}
-      contentContainerStyle={styles.scrollContainer}
-      keyboardShouldPersistTaps={'handled'}
-      showsVerticalScrollIndicator={false}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar style="dark" />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps={'handled'}
+        showsVerticalScrollIndicator={false}
+      >
+        <StatusBar style="dark" />
       <View style={styles.header}>
         <Text style={styles.logo}>
           <Text style={{ color: '#FFCF56' }}>The</Text>
@@ -204,6 +209,7 @@ export default function SignupScreen() {
             value={password}
             onChangeText={setPassword}
             placeholder="Password (min 6 characters)"
+            placeholderTextColor="#999"
             secureTextEntry
           />
         </View>
@@ -215,6 +221,7 @@ export default function SignupScreen() {
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             placeholder="Confirm your password"
+            placeholderTextColor="#999"
             secureTextEntry
           />
         </View>
@@ -309,7 +316,7 @@ For support: activityhubsercive@gmail.com`
           </Text>
         </TouchableOpacity>
       </View>
-
+      </ScrollView>
       <ActivitySelectionModal
         visible={showActivityModal}
         // User closed/skipped the modal
@@ -325,7 +332,7 @@ For support: activityhubsercive@gmail.com`
         }}
         isSignup={true}
       />
-    </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -407,6 +414,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     backgroundColor: '#f9f9f9',
+    color: '#333',
   },
   hintText: {
     fontSize: 12,

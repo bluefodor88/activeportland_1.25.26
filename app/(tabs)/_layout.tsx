@@ -124,6 +124,12 @@ export default function TabLayout() {
               ),
             }}
           />
+          <Tabs.Screen
+            name="people/[id]"
+            options={{
+              href: null, // Hide from tab bar but keep navigation visible
+            }}
+          />
         </Tabs>
       </MeetingReminderProvider>
     </ActivityProvider>

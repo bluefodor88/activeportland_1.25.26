@@ -18,7 +18,7 @@ export function useChats() {
     };
   }, [user?.id]);
 
-  return {
+          return {
     chats,
     loading,
     refetch: () => user?.id && fetchChats(user.id),

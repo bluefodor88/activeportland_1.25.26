@@ -26,18 +26,70 @@ import Constants from 'expo-constants';
 import { sendLocalNotification } from '@/hooks/useNotifications';
 import * as Notifications from 'expo-notifications';
 import { Linking, Platform } from 'react-native';
+import { useAvailability } from '@/hooks/useAvailability';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { profile, userSkills, loading, uploading, updateSkillLevel, updateReadyToday, uploadProfileImage, refetch } = useProfile();
   const { activities } = useActivities();
+  const { availability, loading: availabilityLoading, updateAvailability, DAYS_OF_WEEK, TIME_BLOCKS } = useAvailability();
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+
+  // Fetch blocked users
+  const fetchBlockedUsers = useCallback(async () => {
+    if (!user?.id) {
+      setBlockedUsers([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('blocked_users')
+        .select('blocked_user_id')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching blocked users:', error);
+        setBlockedUsers([]);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        setBlockedUsers([]);
+        return;
+      }
+
+      // Fetch profile info for each blocked user
+      const blockedUserIds = data.map((item: any) => item.blocked_user_id);
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('id, name, avatar_url')
+        .in('id', blockedUserIds);
+
+      if (profilesError) {
+        console.error('Error fetching blocked user profiles:', profilesError);
+        setBlockedUsers([]);
+      } else {
+        const mapped = (profiles || []).map((profile: any) => ({
+          id: profile.id,
+          name: profile.name || 'Unknown User',
+          avatar_url: profile.avatar_url || null,
+        }));
+        setBlockedUsers(mapped);
+      }
+    } catch (error) {
+      console.error('Unexpected error fetching blocked users:', error);
+      setBlockedUsers([]);
+    }
+  }, [user?.id]);
 
   // Refresh profile data when tab comes into focus
   useFocusEffect(
     useCallback(() => {
       refetch();
-    }, [refetch])
+      fetchBlockedUsers();
+    }, [refetch, fetchBlockedUsers])
   );
 
   // Get list of activity IDs user has already selected
@@ -82,14 +134,28 @@ export default function ProfileScreen() {
       }
 
       if (!result.canceled && result.assets[0]) {
-        // Call the hook function
-        const response = await uploadProfileImage(result.assets[0].uri);
-        
-        if (response.success) {
-          Alert.alert('Success', 'Profile photo updated!');
-        } else {
-          Alert.alert('Error', response.error || 'Failed to upload image');
-        }
+        const uri = result.assets[0].uri;
+
+        // Ask the user to confirm before saving the new photo
+        Alert.alert(
+          'Save Profile Photo',
+          'Use this photo as your profile picture?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Save',
+              onPress: async () => {
+                const response = await uploadProfileImage(uri);
+
+                if (response.success) {
+                  Alert.alert('Success', 'Profile photo updated!');
+                } else {
+                  Alert.alert('Error', response.error || 'Failed to upload image');
+                }
+              },
+            },
+          ]
+        );
       }
     } catch (error) {
       console.error('Error picking image:', error);
@@ -222,6 +288,9 @@ export default function ProfileScreen() {
   };
 
   const handleNotificationSettings = async () => {
+    // Refresh blocked users list when opening settings
+    await fetchBlockedUsers();
+    
     // Check current notification permission status
     const { status } = await Notifications.getPermissionsAsync();
     const isEnabled = status === 'granted';
@@ -439,13 +508,95 @@ export default function ProfileScreen() {
                     }
                   }
                 },
-                { text: 'Cancel', style: 'cancel' }
-              ]
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Back', onPress: () => handleNotificationSettings() },
+              ],
+              { cancelable: true }
             );
           }
         },
-        { text: 'Back', onPress: () => handleAppSettings() },
-      ]
+        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const handleBlockedUsers = async () => {
+    await fetchBlockedUsers();
+    
+    if (blockedUsers.length === 0) {
+      Alert.alert(
+        'Blocked Users',
+        'You have no blocked users.',
+        [
+          { text: 'OK', style: 'default' },
+          { text: 'Back', onPress: () => handlePrivacySettings() },
+        ],
+        { cancelable: true }
+      );
+      return;
+    }
+
+    // Show list of blocked users with option to unblock
+    const userList = blockedUsers.map(u => u.name).join('\n');
+    Alert.alert(
+      'Blocked Users',
+      `You have ${blockedUsers.length} blocked user(s):\n\n${userList}\n\nTap "Manage" to unblock users.`,
+      [
+        {
+          text: 'Manage',
+          onPress: () => {
+            // Show unblock options
+            const unblockOptions = blockedUsers.map(blockedUser => ({
+              text: blockedUser.name,
+              onPress: async () => {
+                Alert.alert(
+                  'Unblock User',
+                  `Unblock ${blockedUser.name}?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Unblock',
+                      onPress: async () => {
+                        if (!user?.id) return;
+                        try {
+                          const { error } = await supabase
+                            .from('blocked_users')
+                            .delete()
+                            .eq('user_id', user.id)
+                            .eq('blocked_user_id', blockedUser.id);
+
+                          if (error) {
+                            Alert.alert('Error', 'Failed to unblock user.');
+                          } else {
+                            Alert.alert('Success', `${blockedUser.name} has been unblocked.`);
+                            await fetchBlockedUsers();
+                          }
+                        } catch (error) {
+                          Alert.alert('Error', 'Failed to unblock user.');
+                        }
+                      }
+                    }
+                  ]
+                );
+              }
+            }));
+
+            Alert.alert(
+              'Unblock Users',
+              'Select a user to unblock:',
+              [
+                ...unblockOptions,
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Back', onPress: () => handleBlockedUsers() },
+              ],
+              { cancelable: true }
+            );
+          }
+        },
+        { text: 'Back', onPress: () => handlePrivacySettings() },
+      ],
+      { cancelable: true }
     );
   };
 
@@ -456,22 +607,38 @@ export default function ProfileScreen() {
       [
         { 
           text: 'Profile Visibility', 
-          onPress: () => Alert.alert('Profile Visibility', 'Control who can see your profile and activity levels.\n\nCurrently: Visible to activity members only') 
+          onPress: () => Alert.alert(
+            'Profile Visibility',
+            'Control who can see your profile and activity levels.\n\nCurrently: Visible to activity members only',
+            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
+            { cancelable: true }
+          )
         },
         { 
           text: 'Location Sharing', 
-          onPress: () => Alert.alert('Location Sharing', 'Control location sharing for meetups.\n\nCurrently: Approximate location only') 
+          onPress: () => Alert.alert(
+            'Location Sharing',
+            'Control location sharing for meetups.\n\nCurrently: Approximate location only',
+            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
+            { cancelable: true }
+          )
         },
         { 
-          text: 'Block Users', 
-          onPress: () => Alert.alert('Block Users', 'Manage blocked users.\n\nCurrently: No blocked users') 
+          text: `Block Users${blockedUsers.length > 0 ? ` (${blockedUsers.length})` : ''}`, 
+          onPress: handleBlockedUsers
         },
         { 
           text: 'Report Issues', 
-          onPress: () => Alert.alert('Report Issues', 'Report inappropriate behavior or content.\n\nContact: activityhubsercive@gmail.com') 
+          onPress: () => Alert.alert(
+            'Report Issues',
+            'Report inappropriate behavior or content.\n\nContact: activityhubsercive@gmail.com',
+            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
+            { cancelable: true }
+          )
         },
-        { text: 'Back', onPress: () => handleAppSettings() },
-      ]
+        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
+      ],
+      { cancelable: true }
     );
   };
 
@@ -482,24 +649,50 @@ export default function ProfileScreen() {
       [
         { 
           text: 'Change Password', 
-          onPress: () => Alert.alert('Change Password', 'Password changes are currently handled through email reset.\n\nWould you like us to send a reset link?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Send Reset Link', onPress: () => Alert.alert('Reset Link Sent', 'Check your email for password reset instructions.') }
-          ]) 
+          onPress: () => Alert.alert(
+            'Change Password',
+            'Password changes are currently handled through email reset.\n\nWould you like us to send a reset link?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Send Reset Link', onPress: () => Alert.alert('Reset Link Sent', 'Check your email for password reset instructions.', [{ text: 'OK' }]) },
+              { text: 'Back', onPress: () => handleAccountSettings() },
+            ],
+            { cancelable: true }
+          )
         },
         { 
           text: 'Update Email', 
-          onPress: () => Alert.alert('Update Email', 'Email updates require verification.\n\nContact activityhubsercive@gmail.com for assistance.') 
+          onPress: () => Alert.alert(
+            'Update Email',
+            'Email updates require verification.\n\nContact activityhubsercive@gmail.com for assistance.',
+            [{ text: 'OK' }, { text: 'Back', onPress: () => handleAccountSettings() }],
+            { cancelable: true }
+          )
         },
         { 
           text: 'Delete Account', 
-          onPress: () => Alert.alert('Delete Account', 'This will permanently delete your account and all data.\n\nThis action cannot be undone.', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete Account', style: 'destructive', onPress: () => Alert.alert('Account Deletion', 'Please contact activityhubsercive@gmail.com to delete your account.') }
-          ]) 
+          onPress: () => Alert.alert(
+            'Delete Account',
+            'This will permanently delete your account and all data.\n\nThis action cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete Account',
+                style: 'destructive',
+                onPress: () => Alert.alert(
+                  'Account Deletion',
+                  'Please contact activityhubsercive@gmail.com to delete your account.',
+                  [{ text: 'OK' }]
+                )
+              },
+              { text: 'Back', onPress: () => handleAccountSettings() },
+            ],
+            { cancelable: true }
+          )
         },
-        { text: 'Back', onPress: () => handleAppSettings() },
-      ]
+        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
+      ],
+      { cancelable: true }
     );
   };
 
@@ -645,7 +838,9 @@ For support: activityhubsercive@gmail.com`,
                     <Text style={styles.readyTodayLabel}>Ready today</Text>
                     <Switch
                       value={userSkill.ready_today || false}
-                      onValueChange={(value) => updateReadyToday(userSkill.activity_id, value)}
+                      onValueChange={(value) => {
+                        updateReadyToday(userSkill.activity_id, value).catch(console.error);
+                      }}
                       trackColor={{ false: '#e0e0e0', true: '#4CAF50' }}
                       thumbColor={userSkill.ready_today ? '#fff' : '#f4f3f4'}
                       ios_backgroundColor="#e0e0e0"
@@ -666,13 +861,6 @@ For support: activityhubsercive@gmail.com`,
               <Text style={styles.noActivitiesText}>
                 No activities selected yet.
               </Text>
-              <TouchableOpacity
-                style={styles.addFirstButton}
-                onPress={() => setShowActivityModal(true)}
-              >
-                <Ionicons name="add-circle" size={20} color="white" />
-                <Text style={styles.addFirstButtonText}>Add Your First Activity</Text>
-              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -686,6 +874,68 @@ For support: activityhubsercive@gmail.com`,
           }}
           excludeActivityIds={selectedActivityIds}
         />
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>When are you available?</Text>
+          {availabilityLoading ? (
+            <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 16 }} />
+          ) : (
+            <View style={styles.availabilityContainer}>
+              {DAYS_OF_WEEK.map((dayName, dayIndex) => {
+                const daySlots = availability.filter(
+                  (slot) => slot.day_of_week === dayIndex
+                );
+                return (
+                  <View key={dayIndex} style={styles.availabilityDayRow}>
+                    <Text style={styles.availabilityDayLabel}>
+                      {dayName.substring(0, 3)}
+                    </Text>
+                    <View style={styles.availabilityTimeBlocks}>
+                      {TIME_BLOCKS.map((timeBlock) => {
+                        const slot = daySlots.find(
+                          (s) => s.time_block === timeBlock
+                        );
+                        const isEnabled = slot?.enabled || false;
+                        const timeBlockLabel = timeBlock.charAt(0).toUpperCase() + timeBlock.slice(1);
+                        return (
+                          <TouchableOpacity
+                            key={timeBlock}
+                            style={[
+                              styles.availabilityBlock,
+                              isEnabled && styles.availabilityBlockEnabled,
+                            ]}
+                            onPress={() => {
+                              updateAvailability(
+                                dayIndex as any,
+                                timeBlock,
+                                !isEnabled
+                              ).catch(console.error);
+                            }}
+                          >
+                            <Ionicons
+                              name="checkmark"
+                              size={16}
+                              color={isEnabled ? 'white' : '#999'}
+                              style={styles.availabilityCheckmark}
+                            />
+                            <Text
+                              style={[
+                                styles.availabilityBlockText,
+                                isEnabled && styles.availabilityBlockTextEnabled,
+                              ]}
+                            >
+                              {timeBlockLabel}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
@@ -941,6 +1191,60 @@ const styles = StyleSheet.create({
   loginButtonText: {
     fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
+    color: 'white',
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 16,
+  },
+  availabilityContainer: {
+    marginTop: 8,
+  },
+  availabilityDayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  availabilityDayLabel: {
+    width: 50,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#333',
+  },
+  availabilityTimeBlocks: {
+    flexDirection: 'row',
+    gap: 8,
+    flex: 1,
+  },
+  availabilityBlock: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  availabilityBlockEnabled: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  availabilityCheckmark: {
+    marginRight: 2,
+  },
+  availabilityBlockText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#999',
+  },
+  availabilityBlockTextEnabled: {
     color: 'white',
   },
 });

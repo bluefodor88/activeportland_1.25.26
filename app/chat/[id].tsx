@@ -562,9 +562,9 @@ export default function ChatScreen() {
         )}
         
         {item.message ? (
-          <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.otherMessageText]}>
+        <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.otherMessageText]}>
              {renderMessageText(item.message, isMe)}
-          </Text>
+        </Text>
         ) : null}
         
         <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.otherTimestamp]}>
@@ -793,11 +793,11 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
         <View style={styles.headerActions}>
-          <TouchableOpacity 
-            style={styles.scheduleButton} 
-            onPress={() => setShowScheduleModal(true)}
-          >
-            <Ionicons name="calendar" size={24} color="#FF8C42" />
+        <TouchableOpacity 
+          style={styles.scheduleButton} 
+          onPress={() => setShowScheduleModal(true)}
+        >
+                <Ionicons name="calendar" size={24} color="#FF8C42" />
             <Text style={styles.scheduleButtonText}>Invite</Text>
           </TouchableOpacity>
           <TouchableOpacity 
@@ -805,7 +805,7 @@ export default function ChatScreen() {
             onPress={() => setShowUserActionsModal(true)}
           >
             <Ionicons name="ellipsis-vertical" size={24} color="#333" />
-          </TouchableOpacity>
+        </TouchableOpacity>
         </View>
       </View>
 
@@ -866,39 +866,39 @@ export default function ChatScreen() {
                 ))}
               </ScrollView>
             )}
-            <View style={styles.inputContainer}>
+        <View style={styles.inputContainer}>
               <TouchableOpacity style={[styles.sendButton, {marginRight: 10}]} onPress={pickImage}>
                 <Ionicons name="add-circle" size={28} color="white" />
               </TouchableOpacity>
-              <TextInput
-                style={styles.textInput}
-                value={newMessage}
-                onChangeText={setNewMessage}
-                placeholder="Type a message..."
-                placeholderTextColor="#999"
-                maxLength={1000}
-                multiline
-              />
-              <TouchableOpacity
+          <TextInput
+            style={styles.textInput}
+            value={newMessage}
+            onChangeText={setNewMessage}
+            placeholder="Type a message..."
+            placeholderTextColor="#999"
+            maxLength={1000}
+            multiline
+          />
+          <TouchableOpacity 
               style={[
                 styles.sendButton,
                 ((!newMessage.trim() && selectedImages.length === 0) ||
                   isSending) &&
                   styles.sendButtonDisabled,
               ]}
-              onPress={handleSendMessage}
+            onPress={handleSendMessage}
               disabled={
                 (!newMessage.trim() && selectedImages.length === 0) || isSending
               }
-            >
+          >
               {isSending ? (
                 <ActivityIndicator size="small" color="white" />
               ) : (
                 <Ionicons name="send" size={20} color="white" />
               )}
-            </TouchableOpacity>
+          </TouchableOpacity>
             </View>
-          </View>
+        </View>
       </KeyboardAvoidingView>
 
       <Modal
@@ -996,7 +996,7 @@ export default function ChatScreen() {
                   isInviting ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <Text style={styles.scheduleConfirmText}>Send Invite</Text>
+                <Text style={styles.scheduleConfirmText}>Send Invite</Text>
                   )
                 }
               </TouchableOpacity>

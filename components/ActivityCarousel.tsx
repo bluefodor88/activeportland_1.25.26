@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useActivityStore } from '@/store/useActivityStore';
@@ -54,7 +54,7 @@ export function ActivityCarousel() {
     useCallback(() => {
       // Only refetch if user is logged in
       if (user) {
-        refetch();
+      refetch();
       }
     }, [refetch, user])
   );
@@ -64,10 +64,10 @@ export function ActivityCarousel() {
   const displayActivities: ActivityItem[] = useMemo(() => {
     if (user) {
       // User is logged in - show their activities
-      if (!userSkills || userSkills.length === 0) return [];
-      const filtered = userSkills?.filter(
-        (skill: any) => skill.activities
-      ) as unknown as UserActivity[];
+    if (!userSkills || userSkills.length === 0) return [];
+    const filtered = userSkills?.filter(
+      (skill: any) => skill.activities
+    ) as unknown as UserActivity[];
       return filtered.map(skill => ({
         id: skill.id,
         activity_id: skill.activity_id,
@@ -77,8 +77,8 @@ export function ActivityCarousel() {
       })).sort((a, b) => {
         const nameA = a.name || '';
         const nameB = b.name || '';
-        return nameA.localeCompare(nameB);
-      });
+      return nameA.localeCompare(nameB);
+    });
     } else {
       // User is not logged in - show all activities
       if (!allActivities || allActivities.length === 0) return [];
@@ -130,6 +130,21 @@ export function ActivityCarousel() {
         isAutoScrollingRef.current = false;
       }, 500);
     }
+  };
+
+  const handlePressActivity = (index: number) => {
+    if (index < 0 || index >= displayActivities.length) return;
+    const selected = displayActivities[index];
+
+    setCurrentIndex(index);
+    scrollToIndex(index, true);
+
+    setActivity({
+      activityId: selected.activity_id,
+      activity: selected.name,
+      skillLevel: selected.skill_level || 'Beginner',
+      emoji: selected.emoji,
+    });
   };
 
   useEffect(() => {
@@ -239,9 +254,11 @@ export function ActivityCarousel() {
         {displayActivities.map((activity, index) => {
           const isSelected = index === currentIndex;
           return (
-            <View
+            <TouchableOpacity
               key={`${activity.id}-${activity.activity_id}`}
               style={styles.itemContainer}
+              activeOpacity={0.8}
+              onPress={() => handlePressActivity(index)}
             >
               <View
                 style={[
@@ -263,7 +280,7 @@ export function ActivityCarousel() {
               >
                 {activity.name}
               </Text>
-            </View>
+            </TouchableOpacity>
           );
         })}
 

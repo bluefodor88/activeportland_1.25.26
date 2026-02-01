@@ -89,6 +89,7 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             placeholder="Enter your password"
+            placeholderTextColor="#999"
             secureTextEntry
           />
         </View>
@@ -205,6 +206,7 @@ const styles = StyleSheet.create({
     padding: 16,
     fontSize: 16,
     backgroundColor: '#f9f9f9',
+    color: '#333',
   },
   button: {
     backgroundColor: '#FF8C42',

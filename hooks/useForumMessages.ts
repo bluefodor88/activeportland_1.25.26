@@ -86,7 +86,7 @@ export function useForumMessages(activityId?: string) {
         setMessages([])
       } else {
         console.log(`Fetched ${data?.length || 0} forum messages for activity ${activityId}`)
-        setMessages(data || [])
+      setMessages(data || [])
       }
     } catch (error) {
       console.error('Error fetching messages:', error)

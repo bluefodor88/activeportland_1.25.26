@@ -4,9 +4,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   StyleSheet,
   Image,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useChatContacts } from '@/hooks/useChatContacts';
@@ -109,7 +109,6 @@ export function ParticipantSelector({
       />
       <View style={styles.suggestionInfo}>
         <Text style={styles.suggestionName}>{item.name}</Text>
-        <Text style={styles.suggestionEmail}>{item.email}</Text>
       </View>
                 <Ionicons name="add" size={20} color="#4CAF50" />
     </TouchableOpacity>
@@ -123,15 +122,18 @@ export function ParticipantSelector({
       
       {/* Selected Participants */}
       {selectedParticipants.length > 0 && (
-        <FlatList
-          data={selectedParticipants}
-          renderItem={renderSelectedParticipant}
-          keyExtractor={(item) => item.id}
+        <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           style={styles.selectedList}
           contentContainerStyle={styles.selectedListContent}
-        />
+        >
+          {selectedParticipants.map((p) => (
+            <View key={p.id} style={styles.selectedParticipant}>
+              {renderSelectedParticipant({ item: p })}
+            </View>
+          ))}
+        </ScrollView>
       )}
 
       {/* Search Input */}
@@ -151,13 +153,14 @@ export function ParticipantSelector({
       {/* Search Suggestions */}
       {showSuggestions && searchResults.length > 0 && (
         <View style={styles.suggestionsContainer}>
-          <FlatList
-            data={searchResults}
-            renderItem={renderSuggestion}
-            keyExtractor={(item) => item.id}
+          <ScrollView
             style={styles.suggestionsList}
             nestedScrollEnabled={true}
-          />
+          >
+            {searchResults.map((item) => (
+              <View key={item.id}>{renderSuggestion({ item })}</View>
+            ))}
+          </ScrollView>
         </View>
       )}
 

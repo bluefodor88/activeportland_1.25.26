@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -115,10 +116,22 @@ const ForumMessageItem = React.memo(
         delayLongPress={500}
       >
         <View style={styles.messageContent}>
-          <Image
-            source={avatarUrl ? { uri: avatarUrl } : ICONS.profileIcon}
-            style={styles.messageAvatar}
-          />
+          <TouchableOpacity
+            onPress={() => {
+              if (item.user_id && item.user_id !== currentUserId) {
+                router.push({
+                  pathname: '/(tabs)/people/[id]',
+                  params: { id: item.user_id, name: item.profiles?.name },
+                });
+              }
+            }}
+            disabled={!item.user_id || item.user_id === currentUserId}
+          >
+            <Image
+              source={avatarUrl ? { uri: avatarUrl } : ICONS.profileIcon}
+              style={styles.messageAvatar}
+            />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <View style={styles.messageHeader}>
               <TouchableOpacity onPress={() => onOpenChat(item)}>

@@ -28,7 +28,7 @@ export default function ChatsScreen() {
     useCallback(() => {
       checkUpcomingMeetings();
       refetch();
-    }, [])
+    }, [refetch, checkUpcomingMeetings])
   );
 
   // Handle pull-to-refresh

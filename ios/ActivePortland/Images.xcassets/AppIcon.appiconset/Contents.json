@@ -2,13 +2,43 @@
   "images": [
     {
       "filename": "App-Icon-1024x1024@1x.png",
-      "idiom": "universal",
-      "platform": "ios",
+      "idiom": "iphone",
+      "scale": "2x",
+      "size": "60x60"
+    },
+    {
+      "filename": "App-Icon-1024x1024@1x.png",
+      "idiom": "iphone",
+      "scale": "3x",
+      "size": "60x60"
+    },
+    {
+      "filename": "App-Icon-1024x1024@1x.png",
+      "idiom": "ipad",
+      "scale": "1x",
+      "size": "76x76"
+    },
+    {
+      "filename": "App-Icon-1024x1024@1x.png",
+      "idiom": "ipad",
+      "scale": "2x",
+      "size": "76x76"
+    },
+    {
+      "filename": "App-Icon-1024x1024@1x.png",
+      "idiom": "ipad",
+      "scale": "2x",
+      "size": "83.5x83.5"
+    },
+    {
+      "filename": "App-Icon-1024x1024@1x.png",
+      "idiom": "ios-marketing",
+      "scale": "1x",
       "size": "1024x1024"
     }
   ],
   "info": {
     "version": 1,
-    "author": "expo"
+    "author": "xcode"
   }
 }

@@ -44,6 +44,7 @@ export function ActivityCarousel() {
   const { activities: allActivities, loading: activitiesLoading } = useActivities();
 
   const scrollViewRef = useRef<ScrollView>(null);
+  const itemCentersRef = useRef<number[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // Track scrolling state to prevent loops
@@ -119,7 +120,10 @@ export function ActivityCarousel() {
     if (scrollViewRef.current) {
       isAutoScrollingRef.current = true;
 
-      const offset = index * (ITEM_WIDTH + ITEM_SPACING);
+      const knownCenter = itemCentersRef.current[index];
+      const offset = typeof knownCenter === 'number'
+        ? Math.max(0, knownCenter - SCREEN_WIDTH / 2)
+        : index * (ITEM_WIDTH + ITEM_SPACING);
 
       scrollViewRef.current.scrollTo({
         x: offset,
@@ -259,6 +263,10 @@ export function ActivityCarousel() {
               style={styles.itemContainer}
               activeOpacity={0.8}
               onPress={() => handlePressActivity(index)}
+              onLayout={(event) => {
+                const { x, width } = event.nativeEvent.layout;
+                itemCentersRef.current[index] = x + width / 2;
+              }}
             >
               <View
                 style={[

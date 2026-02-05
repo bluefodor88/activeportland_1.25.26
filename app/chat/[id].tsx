@@ -14,6 +14,7 @@ import {
   Linking,
   Image,
   ActivityIndicator,
+  NativeModules,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ImageView from "react-native-image-viewing";
@@ -30,6 +31,12 @@ import { useEventParticipants } from '@/hooks/useEventParticipants';
 import { scheduleEventNotification } from '@/hooks/useNotifications';
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location';
+<<<<<<< Updated upstream
+=======
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+const TIME_ITEM_HEIGHT = 44;
+>>>>>>> Stashed changes
 
 interface Participant {
   id: string
@@ -55,6 +62,19 @@ export default function ChatScreen() {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
+<<<<<<< Updated upstream
+=======
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedHour, setSelectedHour] = useState('5');
+  const [selectedMinute, setSelectedMinute] = useState('00');
+  const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM');
+
+  const HOURS = ['1','2','3','4','5','6','7','8','9','10','11','12'];
+  const MINUTES = ['00','15','30','45'];
+  const AMPM: Array<'AM' | 'PM'> = ['AM','PM'];
+>>>>>>> Stashed changes
   const [isLocating, setIsLocating] = useState(false);
 
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
@@ -123,23 +143,113 @@ export default function ChatScreen() {
     setIsGalleryVisible(true);
   };
 
-  // Generate available dates (next 3 weeks)
-  const generateAvailableDates = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = 0; i < 21; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      dates.push({
-        value: date.toISOString().split('T')[0],
-        label: date.toLocaleDateString('en-US', { 
-          weekday: 'short', 
-          month: 'short', 
-          day: 'numeric' 
-        })
-      });
+  const handleDateChange = (_event: any, date?: Date) => {
+    if (date) {
+      setSelectedDateObj(date);
+      setSelectedDate(date.toISOString().split('T')[0]);
+      setShowDatePicker(false);
     }
-    return dates;
+  };
+
+  const getSelectedDateLabel = () => {
+    if (!selectedDate) return 'Select a date';
+    const date = selectedDateObj ? selectedDateObj : new Date(selectedDate);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const to24Hour = (hour12: number, ampm: 'AM' | 'PM') => {
+    if (ampm === 'AM') {
+      return hour12 === 12 ? 0 : hour12;
+    }
+    return hour12 === 12 ? 12 : hour12 + 12;
+  };
+
+  const getNearestTimeSelection = () => {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const roundedMinutes = Math.ceil(minutes / 15) * 15;
+    const rounded = new Date(now);
+    rounded.setSeconds(0);
+    rounded.setMilliseconds(0);
+    if (roundedMinutes === 60) {
+      rounded.setHours(rounded.getHours() + 1);
+      rounded.setMinutes(0);
+    } else {
+      rounded.setMinutes(roundedMinutes);
+    }
+
+    // Clamp to 5:00 AM - 10:45 PM
+    const min = new Date(now);
+    min.setHours(5, 0, 0, 0);
+    const max = new Date(now);
+    max.setHours(22, 45, 0, 0);
+
+    let target = rounded;
+    if (target < min) target = min;
+    if (target > max) target = max;
+
+    const hour24 = target.getHours();
+    const minute = target.getMinutes();
+    const ampm: 'AM' | 'PM' = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+
+    return {
+      hour: hour12.toString(),
+      minute: minute.toString().padStart(2, '0'),
+      ampm,
+    };
+  };
+
+  const getSelectedTimeLabel = () => {
+    if (!selectedTime) return 'Select a time';
+    const [h, m] = selectedTime.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hour12 = h % 12 === 0 ? 12 : h % 12;
+    return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  const openTimePicker = () => {
+    if (selectedTime) {
+      const [h, m] = selectedTime.split(':').map(Number);
+      const ampm: 'AM' | 'PM' = h >= 12 ? 'PM' : 'AM';
+      const hour12 = h % 12 === 0 ? 12 : h % 12;
+      setSelectedHour(hour12.toString());
+      setSelectedMinute(m.toString().padStart(2, '0'));
+      setSelectedAmPm(ampm);
+    } else {
+      const nearest = getNearestTimeSelection();
+      setSelectedHour(nearest.hour);
+      setSelectedMinute(nearest.minute);
+      setSelectedAmPm(nearest.ampm);
+    }
+    setShowTimePicker(true);
+  };
+
+  const confirmTimeSelection = () => {
+    if (!selectedDate) {
+      Alert.alert('Select a Date', 'Please choose a date first.');
+      return;
+    }
+    const hour24 = to24Hour(parseInt(selectedHour, 10), selectedAmPm);
+    const timeValue = `${hour24.toString().padStart(2, '0')}:${selectedMinute}`;
+    const dateObj = selectedDateObj || new Date(selectedDate);
+    const selectedDateTime = new Date(dateObj);
+    selectedDateTime.setHours(hour24, parseInt(selectedMinute, 10), 0, 0);
+
+    const now = new Date();
+    const selectedDateKey = dateObj.toISOString().split('T')[0];
+    const todayKey = now.toISOString().split('T')[0];
+    if (selectedDateKey === todayKey && selectedDateTime <= now) {
+      Alert.alert('Choose a Future Time', 'Please select a time in the future.');
+      return;
+    }
+
+    setSelectedTime(timeValue);
+    setShowTimePicker(false);
   };
 
   const handleReportUser = () => {
@@ -258,26 +368,6 @@ export default function ChatScreen() {
     // Sort by timestamp
     return data.sort((a, b) => a.timestamp - b.timestamp);
   }, [acceptedMeetings, pendingInvites, messages]);
-
-  // Generate available times (5am to 10pm)
-  const generateAvailableTimes = () => {
-    const times = [];
-    for (let hour = 5; hour <= 22; hour++) {
-      for (let minute = 0; minute < 60; minute += 15) {
-        const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-        const displayTime = new Date(`2000-01-01T${timeString}`).toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        });
-        times.push({
-          value: timeString,
-          label: displayTime
-        });
-      }
-    }
-    return times;
-  };
 
   // Render item for FlatList
   const renderItem = ({ item }: { item: any }) => {
@@ -475,6 +565,51 @@ export default function ChatScreen() {
       Alert.alert('Error', 'Failed to send invite. Please try again.');
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (isLocating) return;
+
+    try {
+      setIsLocating(true);
+
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please allow location access to use your current location.'
+        );
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const [place] = await Location.reverseGeocodeAsync({
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      });
+
+      if (place) {
+        const street = place.street || place.name;
+        const city = place.city;
+        const parts = [street, city].filter(Boolean);
+        const formatted = parts.length > 0
+          ? parts.join(', ')
+          : `${location.coords.latitude.toFixed(5)}, ${location.coords.longitude.toFixed(5)}`;
+        setEventLocation(formatted);
+      } else {
+        setEventLocation(
+          `${location.coords.latitude.toFixed(5)}, ${location.coords.longitude.toFixed(5)}`
+        );
+      }
+    } catch (error) {
+      console.error('Error getting current location:', error);
+      Alert.alert('Error', 'Unable to get your current location.');
+    } finally {
+      setIsLocating(false);
     }
   };
 
@@ -733,6 +868,14 @@ export default function ChatScreen() {
   }, [id, user]);
 
   useEffect(() => {
+    if (Platform.OS === 'web') {
+      setShowDatePicker(false);
+    }
+  }, []);
+
+  const hasNativeDatePicker = !!NativeModules.RNDateTimePicker;
+
+  useEffect(() => {
     if (chatId) {
       fetchPendingInvites();
       fetchAcceptedMeetings();
@@ -949,9 +1092,10 @@ export default function ChatScreen() {
               Plan an activity with {name}
             </Text>
             
-            <ScrollView style={styles.modalScrollView}>
+            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
               <View style={styles.formInputContainer}>
                 <Text style={styles.inputLabel}>Location</Text>
+<<<<<<< Updated upstream
                 <TextInput
                   style={styles.modalTextInput}
                   value={eventLocation}
@@ -973,52 +1117,96 @@ export default function ChatScreen() {
                     </>
                   )}
                 </TouchableOpacity>
+=======
+                <View style={styles.locationRow}>
+                  <TextInput
+                    style={[styles.modalTextInput, styles.locationInput]}
+                    value={eventLocation}
+                    onChangeText={setEventLocation}
+                    placeholder="Enter location"
+                    placeholderTextColor="#999"
+                  />
+                  <TouchableOpacity
+                    style={[styles.gpsButton, isLocating && styles.gpsButtonDisabled]}
+                    onPress={handleUseCurrentLocation}
+                    disabled={isLocating}
+                  >
+                    {isLocating ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Ionicons name="navigate" size={18} color="white" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.locationHint}>
+                  Use GPS to auto-fill your current location.
+                </Text>
+>>>>>>> Stashed changes
               </View>
 
               <View style={styles.formInputContainer}>
                 <Text style={styles.inputLabel}>Date</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScrollView}>
-                  {generateAvailableDates().map((date) => (
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={() => {
+                    if (Platform.OS === 'web') {
+                      Alert.alert('Not supported on web', 'Please use the iOS or Android app to pick a date.');
+                      return;
+                    }
+                    setShowDatePicker(true);
+                  }}
+                >
+                  <Ionicons name="calendar-outline" size={18} color="#666" />
+                  <Text style={styles.datePickerText}>{getSelectedDateLabel()}</Text>
+                </TouchableOpacity>
+                {showDatePicker && Platform.OS !== 'web' && (
+                  <Modal
+                    visible={showDatePicker}
+                    transparent={true}
+                    animationType="fade"
+                    onRequestClose={() => setShowDatePicker(false)}
+                  >
                     <TouchableOpacity
-                      key={date.value}
-                      style={[
-                        styles.selectorOption,
-                        selectedDate === date.value && styles.selectedOption
-                      ]}
-                      onPress={() => setSelectedDate(date.value)}
+                      style={styles.datePickerOverlay}
+                      activeOpacity={1}
+                      onPress={() => setShowDatePicker(false)}
                     >
-                      <Text style={[
-                        styles.selectorText,
-                        selectedDate === date.value && styles.selectedText
-                      ]}>
-                        {date.label}
-                      </Text>
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        style={styles.datePickerModal}
+                        onPress={() => {}}
+                      >
+                        <DateTimePicker
+                          value={selectedDateObj || new Date()}
+                          mode="date"
+                          display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+                          minimumDate={new Date(new Date().setHours(0, 0, 0, 0))}
+                          onChange={handleDateChange}
+                          style={styles.datePickerNative}
+                        />
+                        {Platform.OS === 'ios' && (
+                          <TouchableOpacity
+                            style={styles.datePickerDoneButton}
+                            onPress={() => setShowDatePicker(false)}
+                          >
+                            <Text style={styles.datePickerDoneText}>Done</Text>
+                          </TouchableOpacity>
+                        )}
+                      </TouchableOpacity>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                  </Modal>
+                )}
               </View>
 
               <View style={styles.formInputContainer}>
                 <Text style={styles.inputLabel}>Time</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectorScrollView}>
-                  {generateAvailableTimes().map((time) => (
-                    <TouchableOpacity
-                      key={time.value}
-                      style={[
-                        styles.selectorOption,
-                        selectedTime === time.value && styles.selectedOption
-                      ]}
-                      onPress={() => setSelectedTime(time.value)}
-                    >
-                      <Text style={[
-                        styles.selectorText,
-                        selectedTime === time.value && styles.selectedText
-                      ]}>
-                        {time.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={openTimePicker}
+                >
+                  <Ionicons name="time-outline" size={18} color="#666" />
+                  <Text style={styles.datePickerText}>{getSelectedTimeLabel()}</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.formInputContainer}>
@@ -1026,6 +1214,12 @@ export default function ChatScreen() {
                 <Text style={styles.inputSubLabel}>
                   Add up to 7 people to join this meetup
                 </Text>
+                <View style={styles.alreadyInvitedRow}>
+                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                  <Text style={styles.alreadyInvitedText}>
+                    Already invited: {name || 'Chat partner'}
+                  </Text>
+                </View>
                 <ParticipantSelector
                   selectedParticipants={selectedParticipants}
                   onParticipantsChange={setSelectedParticipants}
@@ -1057,6 +1251,169 @@ export default function ChatScreen() {
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
+            {showTimePicker && (
+              <View style={styles.timePickerOverlayInline} pointerEvents="box-none">
+                <TouchableOpacity
+                  style={styles.timePickerOverlayTap}
+                  activeOpacity={1}
+                  onPress={() => setShowTimePicker(false)}
+                />
+                <View style={styles.timePickerModal}>
+                  <Text style={styles.timePickerTitle}>Select time</Text>
+                  <View style={styles.timePickerColumns}>
+                    <View style={styles.timePickerColumn}>
+                      <View style={styles.timePickerWheel}>
+                        <FlatList
+                          data={HOURS}
+                          keyExtractor={(item) => item}
+                          showsVerticalScrollIndicator={false}
+                          snapToInterval={TIME_ITEM_HEIGHT}
+                          decelerationRate="fast"
+                          getItemLayout={(_, index) => ({
+                            length: TIME_ITEM_HEIGHT,
+                            offset: TIME_ITEM_HEIGHT * index,
+                            index,
+                          })}
+                          contentContainerStyle={styles.timePickerList}
+                          initialScrollIndex={HOURS.indexOf(selectedHour)}
+                          onMomentumScrollEnd={(event) => {
+                            const index = Math.round(event.nativeEvent.contentOffset.y / TIME_ITEM_HEIGHT);
+                            const value = HOURS[Math.max(0, Math.min(index, HOURS.length - 1))];
+                            setSelectedHour(value);
+                          }}
+                          renderItem={({ item, index }) => {
+                            const selectedIndex = HOURS.indexOf(selectedHour);
+                            const distance = Math.abs(index - selectedIndex);
+                            const opacity = distance === 0 ? 1 : distance === 1 ? 0.6 : distance === 2 ? 0.35 : 0.2;
+                            const isSelected = item === selectedHour;
+                            return (
+                              <TouchableOpacity
+                                style={[styles.timePickerItem, isSelected && styles.timePickerItemSelected]}
+                                onPress={() => setSelectedHour(item)}
+                              >
+                                <Text style={[
+                                  styles.timePickerItemText,
+                                  isSelected && styles.timePickerItemTextSelected,
+                                  { opacity },
+                                ]}>
+                                  {item}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          }}
+                        />
+                        <View style={styles.timePickerCenterHighlight} />
+                      </View>
+                    </View>
+
+                    <View style={styles.timePickerColumn}>
+                      <View style={styles.timePickerWheel}>
+                        <FlatList
+                          data={MINUTES}
+                          keyExtractor={(item) => item}
+                          showsVerticalScrollIndicator={false}
+                          snapToInterval={TIME_ITEM_HEIGHT}
+                          decelerationRate="fast"
+                          getItemLayout={(_, index) => ({
+                            length: TIME_ITEM_HEIGHT,
+                            offset: TIME_ITEM_HEIGHT * index,
+                            index,
+                          })}
+                          contentContainerStyle={styles.timePickerList}
+                          initialScrollIndex={MINUTES.indexOf(selectedMinute)}
+                          onMomentumScrollEnd={(event) => {
+                            const index = Math.round(event.nativeEvent.contentOffset.y / TIME_ITEM_HEIGHT);
+                            const value = MINUTES[Math.max(0, Math.min(index, MINUTES.length - 1))];
+                            setSelectedMinute(value);
+                          }}
+                          renderItem={({ item, index }) => {
+                            const selectedIndex = MINUTES.indexOf(selectedMinute);
+                            const distance = Math.abs(index - selectedIndex);
+                            const opacity = distance === 0 ? 1 : distance === 1 ? 0.6 : distance === 2 ? 0.35 : 0.2;
+                            const isSelected = item === selectedMinute;
+                            return (
+                              <TouchableOpacity
+                                style={[styles.timePickerItem, isSelected && styles.timePickerItemSelected]}
+                                onPress={() => setSelectedMinute(item)}
+                              >
+                                <Text style={[
+                                  styles.timePickerItemText,
+                                  isSelected && styles.timePickerItemTextSelected,
+                                  { opacity },
+                                ]}>
+                                  {item}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          }}
+                        />
+                        <View style={styles.timePickerCenterHighlight} />
+                      </View>
+                    </View>
+
+                    <View style={styles.timePickerColumn}>
+                      <View style={styles.timePickerWheel}>
+                        <FlatList
+                          data={AMPM}
+                          keyExtractor={(item) => item}
+                          showsVerticalScrollIndicator={false}
+                          snapToInterval={TIME_ITEM_HEIGHT}
+                          decelerationRate="fast"
+                          getItemLayout={(_, index) => ({
+                            length: TIME_ITEM_HEIGHT,
+                            offset: TIME_ITEM_HEIGHT * index,
+                            index,
+                          })}
+                          contentContainerStyle={styles.timePickerList}
+                          initialScrollIndex={AMPM.indexOf(selectedAmPm)}
+                          onMomentumScrollEnd={(event) => {
+                            const index = Math.round(event.nativeEvent.contentOffset.y / TIME_ITEM_HEIGHT);
+                            const value = AMPM[Math.max(0, Math.min(index, AMPM.length - 1))];
+                            setSelectedAmPm(value);
+                          }}
+                          renderItem={({ item, index }) => {
+                            const selectedIndex = AMPM.indexOf(selectedAmPm);
+                            const distance = Math.abs(index - selectedIndex);
+                            const opacity = distance === 0 ? 1 : distance === 1 ? 0.6 : distance === 2 ? 0.35 : 0.2;
+                            const isSelected = item === selectedAmPm;
+                            return (
+                              <TouchableOpacity
+                                style={[styles.timePickerItem, isSelected && styles.timePickerItemSelected]}
+                                onPress={() => setSelectedAmPm(item)}
+                              >
+                                <Text style={[
+                                  styles.timePickerItemText,
+                                  isSelected && styles.timePickerItemTextSelected,
+                                  { opacity },
+                                ]}>
+                                  {item}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          }}
+                        />
+                        <View style={styles.timePickerCenterHighlight} />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.timePickerActions}>
+                    <TouchableOpacity
+                      style={styles.timePickerCancel}
+                      onPress={() => setShowTimePicker(false)}
+                    >
+                      <Text style={styles.timePickerCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.timePickerConfirm}
+                      onPress={confirmTimeSelection}
+                    >
+                      <Text style={styles.timePickerConfirmText}>Set Time</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -1364,10 +1721,17 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   modalScrollView: {
-    maxHeight: 300,
+    maxHeight: 420,
+  },
+  modalScrollContent: {
+    paddingBottom: 16,
   },
   formInputContainer: {
     marginBottom: 20,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   inputLabel: {
     fontSize: 16,
@@ -1381,6 +1745,23 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 12,
   },
+  alreadyInvitedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F3FFF5',
+    borderWidth: 1,
+    borderColor: '#CDEFD5',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  alreadyInvitedText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#2E7D32',
+  },
   modalTextInput: {
     fontFamily: 'Inter_400Regular',
     borderWidth: 1,
@@ -1390,6 +1771,27 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: '#f9f9f9',
     fontSize: 16,
+    flex: 1,
+  },
+  locationInput: {
+    marginRight: 10,
+  },
+  gpsButton: {
+    backgroundColor: '#FF8C42',
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gpsButtonDisabled: {
+    opacity: 0.7,
+  },
+  locationHint: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#999',
+    marginTop: 6,
   },
   selectorScrollView: {
     maxHeight: 50,
@@ -1412,6 +1814,161 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   selectedText: {
+    color: 'white',
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  datePickerText: {
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    color: '#333',
+  },
+  datePickerContainer: {
+    marginTop: 12,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    padding: 8,
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  datePickerModal: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 12,
+  },
+  datePickerNative: {
+    height: 320,
+  },
+  datePickerDoneButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  datePickerDoneText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
+  },
+  timePickerModal: {
+    width: '100%',
+    maxWidth: 480,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    zIndex: 2,
+  },
+  timePickerOverlayInline: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timePickerOverlayTap: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  timePickerTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  timePickerColumns: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  timePickerColumn: {
+    flex: 1,
+  },
+  timePickerWheel: {
+    height: 220,
+    borderRadius: 14,
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#EEE',
+    overflow: 'hidden',
+  },
+  timePickerLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  timePickerList: {
+    paddingVertical: 88,
+  },
+  timePickerCenterHighlight: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 88,
+    height: TIME_ITEM_HEIGHT,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#FFE0C2',
+    backgroundColor: 'rgba(255, 140, 66, 0.08)',
+  },
+  timePickerItem: {
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  timePickerItemSelected: {
+    backgroundColor: '#FFF3E0',
+  },
+  timePickerItemText: {
+    fontSize: 18,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#333',
+  },
+  timePickerItemTextSelected: {
+    color: '#FF8C42',
+  },
+  timePickerActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+  },
+  timePickerCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  timePickerCancelText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  timePickerConfirm: {
+    backgroundColor: '#FF8C42',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  timePickerConfirmText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
     color: 'white',
   },
   modalButtons: {

@@ -110,41 +110,44 @@ export function ParticipantSelector({
       <View style={styles.suggestionInfo}>
         <Text style={styles.suggestionName}>{item.name}</Text>
       </View>
-                <Ionicons name="add" size={20} color="#4CAF50" />
+      <View style={styles.addBadge}>
+        <Ionicons name="add" size={16} color="white" />
+      </View>
     </TouchableOpacity>
   )
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>
-        Invite People ({selectedParticipants.length}/{maxParticipants})
-      </Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.label}>Invite People</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeText}>
+            {selectedParticipants.length}/{maxParticipants}
+          </Text>
+        </View>
+      </View>
       
       {/* Selected Participants */}
       {selectedParticipants.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.selectedList}
-          contentContainerStyle={styles.selectedListContent}
-        >
+        <View style={styles.selectedChips}>
           {selectedParticipants.map((p) => (
-            <View key={p.id} style={styles.selectedParticipant}>
-              {renderSelectedParticipant({ item: p })}
-            </View>
+            <View key={p.id}>{renderSelectedParticipant({ item: p })}</View>
           ))}
-        </ScrollView>
+        </View>
       )}
 
       {/* Search Input */}
       {selectedParticipants.length < maxParticipants && (
         <View style={styles.searchContainer}>
-                <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+          <View style={styles.toBadge}>
+            <Text style={styles.toBadgeText}>To</Text>
+          </View>
+          <Ionicons name="search" size={18} color="#999" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             value={searchTerm}
             onChangeText={setSearchTerm}
-            placeholder="Search people by name..."
+            placeholder="Type a name"
             placeholderTextColor="#999"
           />
         </View>
@@ -177,62 +180,88 @@ const styles = StyleSheet.create({
   container: {
     marginBottom: 20,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   label: {
     fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
+    fontFamily: 'Inter_700Bold',
     color: '#333',
-    marginBottom: 12,
   },
-  selectedList: {
-    marginBottom: 12,
+  countBadge: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  selectedListContent: {
-    paddingRight: 16,
+  countBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
+  },
+  selectedChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
   },
   selectedParticipant: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 12,
-    padding: 8,
-    minWidth: 80,
-    position: 'relative',
+    backgroundColor: '#FFF7EE',
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#FFE0C2',
   },
   selectedAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginBottom: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 8,
   },
   selectedName: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
     color: '#333',
-    textAlign: 'center',
+    marginRight: 6,
   },
   removeButton: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: 'white',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: 22,
+    height: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#FFE0C2',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderRadius: 14,
     paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#EEE',
     marginBottom: 8,
+  },
+  toBadge: {
+    backgroundColor: '#FF8C42',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 8,
+  },
+  toBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
   },
   searchIcon: {
     marginRight: 8,
@@ -246,10 +275,11 @@ const styles = StyleSheet.create({
   },
   suggestionsContainer: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 14,
     maxHeight: 200,
     borderWidth: 1,
     borderColor: '#eee',
+    overflow: 'hidden',
   },
   suggestionsList: {
     maxHeight: 200,
@@ -259,7 +289,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#f5f5f5',
   },
   suggestionAvatar: {
     width: 40,
@@ -271,9 +301,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   suggestionName: {
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
     color: '#333',
+  },
+  addBadge: {
+    backgroundColor: '#FF8C42',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   suggestionEmail: {
     fontSize: 12,

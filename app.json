@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/images/icon.png",
-    "privacy": "public",
     "platforms": [
       "ios",
       "android",
@@ -22,15 +21,15 @@
       }
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.campbell3c2.activeportland",
-      "buildNumber": "93",
+      "buildNumber": "91",
       "entitlements": {
         "aps-environment": "production"
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "CFBundleIconName": "AppIcon",
+
         "NSCameraUsageDescription": "The Activity Hub uses the camera to let you take a profile photo, helping other activity partners recognize you at meetups and creating a safer, more connected community experience.",
         "NSPhotoLibraryUsageDescription": "The Activity Hub accesses your photo library to let you choose a profile photo, helping other activity partners recognize you at meetups and creating a safer, more connected community experience.",
         "NSPhotoLibraryAddUsageDescription": "Save your new profile photo to your photo library.",

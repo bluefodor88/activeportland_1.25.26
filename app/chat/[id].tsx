@@ -29,6 +29,7 @@ import { ParticipantSelector } from '@/components/ParticipantSelector';
 import { useEventParticipants } from '@/hooks/useEventParticipants';
 import { scheduleEventNotification } from '@/hooks/useNotifications';
 import * as ImagePicker from 'expo-image-picker'
+import * as Location from 'expo-location';
 
 interface Participant {
   id: string
@@ -54,6 +55,7 @@ export default function ChatScreen() {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
 
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryImages, setGalleryImages] = useState<{ uri: string }[]>([]);
@@ -78,6 +80,39 @@ export default function ChatScreen() {
       // result.assets contains the array of selected images
       const uris = result.assets.map(asset => asset.uri);
       setSelectedImages(prev => [...prev, ...uris]);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (isLocating) return;
+
+    try {
+      setIsLocating(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location Permission', 'Please allow location access to use current location.');
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const [place] = await Location.reverseGeocodeAsync({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+
+      const street = place?.street || place?.name || '';
+      const city = place?.city || place?.region || place?.subregion || '';
+      const formatted = [street, city].filter(Boolean).join(', ').trim();
+
+      setEventLocation(formatted || 'Current Location');
+    } catch (error) {
+      console.error('Error getting current location:', error);
+      Alert.alert('Location Error', 'Unable to fetch current location. Please try again.');
+    } finally {
+      setIsLocating(false);
     }
   };
 
@@ -924,6 +959,20 @@ export default function ChatScreen() {
                   placeholder="Enter location"
                   placeholderTextColor="#999"
                 />
+                <TouchableOpacity
+                  style={[styles.useLocationButton, isLocating && { opacity: 0.7 }]}
+                  onPress={handleUseCurrentLocation}
+                  disabled={isLocating}
+                >
+                  {isLocating ? (
+                    <ActivityIndicator size="small" color="#FF8C42" />
+                  ) : (
+                    <>
+                      <Ionicons name="location" size={16} color="#FF8C42" />
+                      <Text style={styles.useLocationText}>Use current location</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
 
               <View style={styles.formInputContainer}>
@@ -1277,6 +1326,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  useLocationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  useLocationText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
   },
   modalContent: {
     backgroundColor: 'white',

@@ -22,17 +22,20 @@ interface ParticipantSelectorProps {
   selectedParticipants: Participant[]
   onParticipantsChange: (participants: Participant[]) => void
   maxParticipants?: number
+  excludedUserIds?: string[]
 }
 
 export function ParticipantSelector({ 
   selectedParticipants, 
   onParticipantsChange, 
-  maxParticipants = 7 
+  maxParticipants = 7,
+  excludedUserIds = []
 }: ParticipantSelectorProps) {
   const { contacts, searchAllUsers } = useChatContacts()
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<Participant[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const excludedSet = new Set(excludedUserIds.filter(Boolean))
 
   useEffect(() => {
     if (searchTerm.trim()) {
@@ -96,30 +99,41 @@ export function ParticipantSelector({
     </View>
   )
 
-  const renderSuggestion = ({ item }: { item: Participant }) => (
-    <TouchableOpacity
-      style={styles.suggestionItem}
-      onPress={() => addParticipant(item)}
-    >
+  const renderSuggestion = ({ item }: { item: Participant }) => {
+    const alreadyInvited = excludedSet.has(item.id)
+    return (
+      <TouchableOpacity
+        style={[styles.suggestionItem, alreadyInvited && styles.suggestionItemDisabled]}
+        onPress={() => !alreadyInvited && addParticipant(item)}
+        disabled={alreadyInvited}
+      >
       <Image 
         source={{ 
           uri: item.avatar_url || 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=2' 
         }} 
-        style={styles.suggestionAvatar} 
+        style={[styles.suggestionAvatar, alreadyInvited && styles.suggestionAvatarDisabled]} 
       />
       <View style={styles.suggestionInfo}>
-        <Text style={styles.suggestionName}>{item.name}</Text>
+        <Text style={[styles.suggestionName, alreadyInvited && styles.suggestionNameDisabled]}>
+          {item.name}
+        </Text>
+        {alreadyInvited && (
+          <Text style={styles.alreadyInvitedInline}>Already invited</Text>
+        )}
       </View>
-      <View style={styles.addBadge}>
-        <Ionicons name="add" size={16} color="white" />
-      </View>
+      {!alreadyInvited && (
+        <View style={styles.addBadge}>
+          <Ionicons name="add" size={16} color="white" />
+        </View>
+      )}
     </TouchableOpacity>
-  )
+    )
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.label}>Invite People</Text>
+        <Text style={styles.label}>Send an Invite</Text>
         <View style={styles.countBadge}>
           <Text style={styles.countBadgeText}>
             {selectedParticipants.length}/{maxParticipants}
@@ -178,7 +192,7 @@ export function ParticipantSelector({
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 20,
+    marginBottom: 0,
   },
   headerRow: {
     flexDirection: 'row',
@@ -187,7 +201,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter_700Bold',
     color: '#333',
   },
@@ -243,19 +257,20 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: '#EEE',
+    borderColor: '#ddd',
     marginBottom: 8,
   },
   toBadge: {
     backgroundColor: '#FF8C42',
     borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 2,
     marginRight: 8,
   },
   toBadgeText: {
@@ -270,7 +285,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'Inter_400Regular',
     fontSize: 16,
-    paddingVertical: 12,
+    paddingVertical: 0,
     color: '#333',
   },
   suggestionsContainer: {
@@ -305,6 +320,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#333',
   },
+  alreadyInvitedInline: {
+    marginTop: 2,
+    fontSize: 12,
+    fontFamily: 'Inter_500Medium',
+    color: '#999',
+  },
   addBadge: {
     backgroundColor: '#FF8C42',
     width: 28,
@@ -312,6 +333,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  suggestionItemDisabled: {
+    backgroundColor: '#FBFBFB',
+  },
+  suggestionAvatarDisabled: {
+    opacity: 0.5,
+  },
+  suggestionNameDisabled: {
+    color: '#777',
   },
   suggestionEmail: {
     fontSize: 12,

@@ -15,6 +15,7 @@ import {
   Image,
   ActivityIndicator,
   NativeModules,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ImageView from "react-native-image-viewing";
@@ -27,16 +28,14 @@ import { getOrCreateChat, useChats } from '@/hooks/useChats';
 import { supabase } from '@/lib/supabase';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ParticipantSelector } from '@/components/ParticipantSelector';
+import { useActivities } from '@/hooks/useActivities';
 import { useEventParticipants } from '@/hooks/useEventParticipants';
 import { scheduleEventNotification } from '@/hooks/useNotifications';
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location';
-<<<<<<< Updated upstream
-=======
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 const TIME_ITEM_HEIGHT = 44;
->>>>>>> Stashed changes
 
 interface Participant {
   id: string
@@ -62,19 +61,21 @@ export default function ChatScreen() {
   const [selectedImages, setSelectedImages] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isInviting, setIsInviting] = useState(false);
-<<<<<<< Updated upstream
-=======
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [selectedHour, setSelectedHour] = useState('5');
   const [selectedMinute, setSelectedMinute] = useState('00');
   const [selectedAmPm, setSelectedAmPm] = useState<'AM' | 'PM'>('AM');
+  const [showActivityPicker, setShowActivityPicker] = useState(false);
+  const [selectedActivityId, setSelectedActivityId] = useState<string>('');
+  const [selectedActivityName, setSelectedActivityName] = useState<string>('');
+  const [activitySearch, setActivitySearch] = useState('');
+  const [locationMode, setLocationMode] = useState<'manual' | 'gps'>('manual');
 
   const HOURS = ['1','2','3','4','5','6','7','8','9','10','11','12'];
   const MINUTES = ['00','15','30','45'];
   const AMPM: Array<'AM' | 'PM'> = ['AM','PM'];
->>>>>>> Stashed changes
   const [isLocating, setIsLocating] = useState(false);
 
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
@@ -85,6 +86,7 @@ export default function ChatScreen() {
   const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
   const { messages, loading: messagesLoading, error: messagesError, sendMessage } = useChatMessages(chatId);
+  const { activities } = useActivities();
   const { inviteParticipants } = useEventParticipants();
   const flatListRef = useRef<FlatList>(null);
 
@@ -100,39 +102,6 @@ export default function ChatScreen() {
       // result.assets contains the array of selected images
       const uris = result.assets.map(asset => asset.uri);
       setSelectedImages(prev => [...prev, ...uris]);
-    }
-  };
-
-  const handleUseCurrentLocation = async () => {
-    if (isLocating) return;
-
-    try {
-      setIsLocating(true);
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Location Permission', 'Please allow location access to use current location.');
-        return;
-      }
-
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const [place] = await Location.reverseGeocodeAsync({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      });
-
-      const street = place?.street || place?.name || '';
-      const city = place?.city || place?.region || place?.subregion || '';
-      const formatted = [street, city].filter(Boolean).join(', ').trim();
-
-      setEventLocation(formatted || 'Current Location');
-    } catch (error) {
-      console.error('Error getting current location:', error);
-      Alert.alert('Location Error', 'Unable to fetch current location. Please try again.');
-    } finally {
-      setIsLocating(false);
     }
   };
 
@@ -250,6 +219,16 @@ export default function ChatScreen() {
 
     setSelectedTime(timeValue);
     setShowTimePicker(false);
+  };
+
+  const filteredActivities = activities
+    .filter(a => a?.name)
+    .filter(a => a.name.toLowerCase().includes(activitySearch.trim().toLowerCase()));
+
+  const selectActivity = (activity: { id: string; name: string }) => {
+    setSelectedActivityId(activity.id);
+    setSelectedActivityName(activity.name);
+    setShowActivityPicker(false);
   };
 
   const handleReportUser = () => {
@@ -536,11 +515,14 @@ export default function ChatScreen() {
           .from('scheduled_events')
           .insert({
             organizer_id: user.id,
+            activity_id: selectedActivityId || null,
             title: `Meetup at ${eventLocation.trim()}`,
             location: eventLocation.trim(),
             event_date: selectedDate,
             event_time: selectedTime,
-            description: `Group meetup organized from chat with ${name}`,
+            description: selectedActivityName
+              ? `Group meetup for ${selectedActivityName}`
+              : `Group meetup organized from chat with ${name}`,
             max_participants: selectedParticipants.length + 2, // +2 for organizer and original chat partner
           })
           .select('id')
@@ -557,6 +539,8 @@ export default function ChatScreen() {
       setEventLocation('');
       setSelectedDate('');
       setSelectedTime('');
+      setSelectedActivityId('');
+      setSelectedActivityName('');
       setSelectedParticipants([]);
       setShowScheduleModal(false);
       fetchPendingInvites(); // Refresh invites
@@ -572,6 +556,7 @@ export default function ChatScreen() {
     if (isLocating) return;
 
     try {
+      setLocationMode('gps');
       setIsLocating(true);
 
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -610,6 +595,15 @@ export default function ChatScreen() {
       Alert.alert('Error', 'Unable to get your current location.');
     } finally {
       setIsLocating(false);
+    }
+  };
+
+  const selectLocationMode = async (mode: 'manual' | 'gps') => {
+    setLocationMode(mode);
+    if (mode === 'gps') {
+      await handleUseCurrentLocation();
+    } else {
+      setEventLocation('');
     }
   };
 
@@ -1087,61 +1081,130 @@ export default function ChatScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Schedule a Meetup</Text>
-            <Text style={styles.modalSubtitle}>
-              Plan an activity with {name}
-            </Text>
+            <Text style={styles.modalTitle}>Let's make a plan?</Text>
+            <View style={styles.modalTitleSpacer} />
             
-            <ScrollView style={styles.modalScrollView} contentContainerStyle={styles.modalScrollContent}>
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.formInputContainer}>
+                <Text style={styles.inputLabel}>Activity</Text>
+                <TouchableOpacity
+                  style={styles.datePickerButton}
+                  onPress={() => setShowActivityPicker(true)}
+                >
+                  <Ionicons
+                    name="flash-outline"
+                    size={18}
+                    color={selectedActivityName ? '#333' : '#999'}
+                  />
+                  <Text style={[styles.datePickerText, !selectedActivityName && styles.datePickerPlaceholder]}>
+                    {selectedActivityName || 'Select an activity'}
+                  </Text>
+                </TouchableOpacity>
+                {showActivityPicker && (
+                  <View style={styles.activityPicker}>
+                    <View style={styles.searchContainer}>
+                      <TextInput
+                        style={styles.searchInput}
+                        value={activitySearch}
+                        onChangeText={setActivitySearch}
+                        placeholder="Search activities"
+                        placeholderTextColor="#999"
+                      />
+                    </View>
+                    <ScrollView style={styles.activityList} nestedScrollEnabled>
+                      {filteredActivities.map((activity) => (
+                        <TouchableOpacity
+                          key={activity.id}
+                          style={styles.activityOption}
+                          onPress={() => selectActivity(activity)}
+                        >
+                          <Text style={styles.activityOptionText}>{activity.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                      {filteredActivities.length === 0 && (
+                        <View style={styles.noResultsContainer}>
+                          <Text style={styles.noResultsText}>No activities found</Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
               <View style={styles.formInputContainer}>
                 <Text style={styles.inputLabel}>Location</Text>
-<<<<<<< Updated upstream
-                <TextInput
-                  style={styles.modalTextInput}
-                  value={eventLocation}
-                  onChangeText={setEventLocation}
-                  placeholder="Enter location"
-                  placeholderTextColor="#999"
-                />
-                <TouchableOpacity
-                  style={[styles.useLocationButton, isLocating && { opacity: 0.7 }]}
-                  onPress={handleUseCurrentLocation}
-                  disabled={isLocating}
-                >
-                  {isLocating ? (
-                    <ActivityIndicator size="small" color="#FF8C42" />
-                  ) : (
-                    <>
-                      <Ionicons name="location" size={16} color="#FF8C42" />
-                      <Text style={styles.useLocationText}>Use current location</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-=======
+                <View style={styles.locationModeRow}>
+                  <TouchableOpacity
+                    style={[
+                      styles.locationModePill,
+                      locationMode === 'manual' && styles.locationModePillActive
+                    ]}
+                    onPress={() => selectLocationMode('manual')}
+                  >
+                    <Text
+                      style={[
+                        styles.locationModeText,
+                        locationMode === 'manual' && styles.locationModeTextActive
+                      ]}
+                    >
+                      Enter manually
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.locationModePill,
+                      locationMode === 'gps' && styles.locationModePillActive
+                    ]}
+                    onPress={() => selectLocationMode('gps')}
+                  >
+                    <Text
+                      style={[
+                        styles.locationModeText,
+                        locationMode === 'gps' && styles.locationModeTextActive
+                      ]}
+                    >
+                      Use GPS
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.locationRow}>
                   <TextInput
                     style={[styles.modalTextInput, styles.locationInput]}
                     value={eventLocation}
                     onChangeText={setEventLocation}
-                    placeholder="Enter location"
+                    placeholder={locationMode === 'gps' ? 'Fetching location...' : 'Enter location'}
                     placeholderTextColor="#999"
+                    editable={locationMode === 'manual'}
                   />
                   <TouchableOpacity
                     style={[styles.gpsButton, isLocating && styles.gpsButtonDisabled]}
-                    onPress={handleUseCurrentLocation}
+                    onPress={() => {
+                      if (locationMode === 'manual') {
+                        Keyboard.dismiss();
+                        return;
+                      }
+                      handleUseCurrentLocation();
+                    }}
                     disabled={isLocating}
                   >
                     {isLocating ? (
                       <ActivityIndicator size="small" color="white" />
                     ) : (
-                      <Ionicons name="navigate" size={18} color="white" />
+                      <Ionicons
+                        name={locationMode === 'manual' ? 'arrow-forward' : 'location'}
+                        size={18}
+                        color="white"
+                      />
                     )}
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.locationHint}>
-                  Use GPS to auto-fill your current location.
+                  * Use GPS to auto-fill your current location.
                 </Text>
->>>>>>> Stashed changes
               </View>
 
               <View style={styles.formInputContainer}>
@@ -1156,8 +1219,14 @@ export default function ChatScreen() {
                     setShowDatePicker(true);
                   }}
                 >
-                  <Ionicons name="calendar-outline" size={18} color="#666" />
-                  <Text style={styles.datePickerText}>{getSelectedDateLabel()}</Text>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={18}
+                    color={selectedDate ? '#333' : '#999'}
+                  />
+                  <Text style={[styles.datePickerText, !selectedDate && styles.datePickerPlaceholder]}>
+                    {getSelectedDateLabel()}
+                  </Text>
                 </TouchableOpacity>
                 {showDatePicker && Platform.OS !== 'web' && (
                   <Modal
@@ -1204,13 +1273,19 @@ export default function ChatScreen() {
                   style={styles.datePickerButton}
                   onPress={openTimePicker}
                 >
-                  <Ionicons name="time-outline" size={18} color="#666" />
-                  <Text style={styles.datePickerText}>{getSelectedTimeLabel()}</Text>
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={selectedTime ? '#333' : '#999'}
+                  />
+                  <Text style={[styles.datePickerText, !selectedTime && styles.datePickerPlaceholder]}>
+                    {getSelectedTimeLabel()}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
               <View style={styles.formInputContainer}>
-                <Text style={styles.inputLabel}>Invite Others (Optional)</Text>
+                <Text style={styles.inputLabel}>Bring someone along?</Text>
                 <Text style={styles.inputSubLabel}>
                   Add up to 7 people to join this meetup
                 </Text>
@@ -1224,7 +1299,7 @@ export default function ChatScreen() {
                   selectedParticipants={selectedParticipants}
                   onParticipantsChange={setSelectedParticipants}
                   maxParticipants={7}
-                  // excludeUserIds={[user?.id || '', id]} // Exclude self and chat partner
+                  excludedUserIds={[user?.id || '', id]}
                 />
               </View>
             </ScrollView>
@@ -1684,19 +1759,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  useLocationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: 6,
-    marginTop: 8,
-    paddingVertical: 6,
-  },
-  useLocationText: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#FF8C42',
-  },
   modalContent: {
     backgroundColor: 'white',
     borderRadius: 20,
@@ -1711,7 +1773,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#333',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  modalTitleSpacer: {
+    height: 12,
   },
   modalSubtitle: {
     fontSize: 14,
@@ -1724,7 +1789,7 @@ const styles = StyleSheet.create({
     maxHeight: 420,
   },
   modalScrollContent: {
-    paddingBottom: 16,
+    paddingBottom: 0,
   },
   formInputContainer: {
     marginBottom: 20,
@@ -1733,8 +1798,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  locationModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  locationModePill: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    backgroundColor: '#f7f7f7',
+  },
+  locationModePillActive: {
+    borderColor: '#FF8C42',
+    backgroundColor: '#FFF3E0',
+  },
+  locationModeText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  locationModeTextActive: {
+    color: '#FF8C42',
+  },
   inputLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: 'Inter_600SemiBold',
     color: '#333',
     marginBottom: 8,
@@ -1830,6 +1920,30 @@ const styles = StyleSheet.create({
   datePickerText: {
     fontSize: 16,
     fontFamily: 'Inter_400Regular',
+    color: '#333',
+  },
+  datePickerPlaceholder: {
+    color: '#999',
+  },
+  activityPicker: {
+    marginTop: 12,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#eee',
+    padding: 12,
+  },
+  activityList: {
+    maxHeight: 180,
+  },
+  activityOption: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f3f3',
+  },
+  activityOptionText: {
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
     color: '#333',
   },
   datePickerContainer: {
@@ -1972,7 +2086,7 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   modalButtons: {
-    marginTop: 20,
+    marginTop: 2,
   },
   scheduleConfirmButton: {
     backgroundColor: '#4CAF50',

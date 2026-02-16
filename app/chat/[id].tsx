@@ -29,6 +29,7 @@ import { supabase } from '@/lib/supabase';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ParticipantSelector } from '@/components/ParticipantSelector';
 import { useActivities } from '@/hooks/useActivities';
+import { ICONS } from '@/lib/helperUtils';
 import { useEventParticipants } from '@/hooks/useEventParticipants';
 import { scheduleEventNotification } from '@/hooks/useNotifications';
 import * as ImagePicker from 'expo-image-picker'
@@ -71,6 +72,7 @@ export default function ChatScreen() {
   const [selectedActivityId, setSelectedActivityId] = useState<string>('');
   const [selectedActivityName, setSelectedActivityName] = useState<string>('');
   const [activitySearch, setActivitySearch] = useState('');
+  const [otherUserAvatar, setOtherUserAvatar] = useState<string | null>(null);
   const [locationMode, setLocationMode] = useState<'manual' | 'gps'>('manual');
 
   const HOURS = ['1','2','3','4','5','6','7','8','9','10','11','12'];
@@ -81,7 +83,6 @@ export default function ChatScreen() {
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryImages, setGalleryImages] = useState<{ uri: string }[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
-  const [showUserActionsModal, setShowUserActionsModal] = useState(false);
   
   const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
@@ -231,84 +232,6 @@ export default function ChatScreen() {
     setShowActivityPicker(false);
   };
 
-  const handleReportUser = () => {
-    setShowUserActionsModal(false);
-    const userId = id;
-    const userName = name || 'User';
-    
-    Alert.alert(
-      'Report User',
-      `Report ${userName} for inappropriate behavior?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: () => {
-            // Open email with pre-filled subject
-            const email = 'activityhubsercive@gmail.com';
-            const subject = encodeURIComponent(`Report User - ${userId}`);
-            const body = encodeURIComponent(`I would like to report user ${userName} (ID: ${userId}) for the following reason:\n\n`);
-            const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
-            
-            Linking.canOpenURL(mailtoLink).then(supported => {
-              if (supported) {
-                Linking.openURL(mailtoLink);
-              } else {
-                Alert.alert('Error', 'Please email activityhubsercive@gmail.com with subject: "Report User - ' + userId + '"');
-              }
-            });
-          }
-        }
-      ]
-    );
-  };
-
-  const handleBlockUser = async () => {
-    if (!user) return;
-    setShowUserActionsModal(false);
-    
-    const userId = id;
-    const userName = name || 'User';
-
-    Alert.alert(
-      'Block User',
-      `Block ${userName}? This will:\n• Hide all chats with this user\n• Disable messaging\n• Remove them from your people list`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Create a blocked_users record
-              const { error } = await supabase
-                .from('blocked_users')
-                .upsert({
-                  user_id: user.id,
-                  blocked_user_id: userId,
-                  created_at: new Date().toISOString(),
-                }, {
-                  onConflict: 'user_id,blocked_user_id'
-                });
-
-              if (error) {
-                console.error('Error blocking user:', error);
-                Alert.alert('Error', 'Failed to block user. Please try again.');
-              } else {
-                Alert.alert('User Blocked', `${userName} has been blocked.`, [
-                  { text: 'OK', onPress: () => router.back() }
-                ]);
-              }
-            } catch (error) {
-              console.error('Error blocking user:', error);
-              Alert.alert('Error', 'Failed to block user. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
 
   // Combine all data for FlatList (memoized to prevent memory leaks)
   const combinedData = useMemo(() => {
@@ -667,6 +590,26 @@ export default function ChatScreen() {
     }
   };
 
+  const renderHeaderTitle = () => (
+    <TouchableOpacity
+      style={styles.headerTitleRow}
+      onPress={() => {
+        if (!id) return;
+        router.push({
+          pathname: '/(tabs)/people/[id]',
+          params: { id, name: name || '', from: 'chat', fromChatUserId: id, fromChatName: name || '' },
+        });
+      }}
+      activeOpacity={0.8}
+    >
+      <Image
+        source={otherUserAvatar ? { uri: otherUserAvatar } : ICONS.profileIcon}
+        style={styles.headerAvatar}
+      />
+      <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
+    </TouchableOpacity>
+  );
+
   const formatTime = (dateString: string) => {
     return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -862,6 +805,28 @@ export default function ChatScreen() {
   }, [id, user]);
 
   useEffect(() => {
+    if (!id) return;
+    let isMounted = true;
+    supabase
+      .from('profiles')
+      .select('avatar_url')
+      .eq('id', id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Error fetching profile avatar:', error);
+          return;
+        }
+        if (isMounted) {
+          setOtherUserAvatar(data?.avatar_url ?? null);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
+  useEffect(() => {
     if (Platform.OS === 'web') {
       setShowDatePicker(false);
     }
@@ -923,7 +888,7 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                 <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
+          {renderHeaderTitle()}
           <View style={styles.placeholder} />
         </View>
         <View style={styles.centerContainer}>
@@ -942,7 +907,7 @@ export default function ChatScreen() {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                 <Ionicons name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
+          {renderHeaderTitle()}
           <View style={styles.placeholder} />
         </View>
         <View style={styles.centerContainer}>
@@ -963,7 +928,7 @@ export default function ChatScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
                 <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{name || 'Chat'}</Text>
+        {renderHeaderTitle()}
         <View style={styles.headerActions}>
         <TouchableOpacity 
           style={styles.scheduleButton} 
@@ -972,12 +937,6 @@ export default function ChatScreen() {
                 <Ionicons name="calendar" size={24} color="#FF8C42" />
             <Text style={styles.scheduleButtonText}>Invite</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={styles.menuButton} 
-            onPress={() => setShowUserActionsModal(true)}
-          >
-            <Ionicons name="ellipsis-vertical" size={24} color="#333" />
-        </TouchableOpacity>
         </View>
       </View>
 
@@ -1501,41 +1460,6 @@ export default function ChatScreen() {
         doubleTapToZoomEnabled={true}
       />
 
-      <Modal
-        visible={showUserActionsModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowUserActionsModal(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowUserActionsModal(false)}
-        >
-          <View style={styles.userActionsModalContent}>
-            <TouchableOpacity
-              style={styles.userActionButton}
-              onPress={handleReportUser}
-            >
-              <Ionicons name="flag-outline" size={20} color="#666" />
-              <Text style={styles.userActionText}>Report User</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.userActionButton, styles.blockActionButton]}
-              onPress={handleBlockUser}
-            >
-              <Ionicons name="ban-outline" size={20} color="#F44336" />
-              <Text style={[styles.userActionText, { color: '#F44336' }]}>Block User</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.userActionCancelButton}
-              onPress={() => setShowUserActionsModal(false)}
-            >
-              <Text style={styles.userActionCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -1562,6 +1486,18 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#333',
   },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginLeft: 4,
+  },
+  headerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 8,
+  },
   scheduleButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1577,53 +1513,6 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  menuButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  userActionsModalContent: {
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 8,
-    margin: 20,
-    minWidth: 200,
-    alignSelf: 'flex-end',
-    marginTop: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  userActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  blockActionButton: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  userActionText: {
-    fontSize: 16,
-    fontFamily: 'Inter_400Regular',
-    color: '#333',
-  },
-  userActionCancelButton: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    alignItems: 'center',
-  },
-  userActionCancelText: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#666',
   },
   keyboardContainer: {
     flex: 1,

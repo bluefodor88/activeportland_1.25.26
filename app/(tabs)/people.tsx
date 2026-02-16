@@ -192,7 +192,7 @@ export default function PeopleScreen() {
       onPress={() =>
         router.push({
           pathname: '/(tabs)/people/[id]',
-          params: { id: item.id, name: item.name },
+          params: { id: item.id, name: item.name, from: 'people' },
         })
       }
     >
@@ -268,14 +268,26 @@ export default function PeopleScreen() {
         renderItem={renderUser}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-            {section.title === 'Ready Today' && (
-              <View style={styles.readyTodayBadge}>
-                <Text style={styles.readyTodayBadgeText}>{section.data.length}</Text>
-              </View>
-            )}
+            <View style={styles.sectionTitleRow}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+              {section.title === 'Ready Today' && (
+                <View style={styles.readyTodayBadgeInline}>
+                  <Text style={styles.readyTodayBadgeText}>{section.data.length}</Text>
+                </View>
+              )}
+            </View>
           </View>
         )}
+        renderSectionFooter={({ section }) =>
+          section.title === 'Ready Today' && section.data.length === 0 ? (
+            <View style={styles.readyTodayEmpty}>
+              <Text style={styles.readyTodayEmptyText}>
+                Looks quiet — be the first to go ready today.
+              </Text>
+            </View>
+          ) : null
+        }
+        stickySectionHeadersEnabled={true}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContainer, { paddingBottom: Math.max(insets.bottom, 20) + 90 }]}
         showsVerticalScrollIndicator={false}
@@ -328,6 +340,7 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255, 140, 66, 0.1)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 2,
+    textAlign: 'left',
   },
   subtitle: {
     fontSize: 14,
@@ -341,21 +354,53 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 4,
     paddingVertical: 12,
     marginBottom: 8,
+    backgroundColor: '#FAF9F6',
+    zIndex: 1,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    flex: 0,
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
     color: '#333',
+    textAlign: 'left',
   },
   readyTodayBadge: {
     backgroundColor: '#4CAF50',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+  },
+  readyTodayBadgeInline: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  readyTodayEmpty: {
+    backgroundColor: '#FFF7EE',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginHorizontal: 4,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#FFE0C2',
+  },
+  readyTodayEmptyText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#FF8C42',
+    textAlign: 'center',
   },
   readyTodayBadgeText: {
     fontSize: 12,
@@ -383,8 +428,9 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    width: '100%',
   },
   avatar: {
     width: 60,

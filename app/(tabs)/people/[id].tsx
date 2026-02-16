@@ -7,6 +7,9 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Alert,
+  Linking,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '@/lib/supabase';
 import { ICONS } from '@/lib/helperUtils';
 import { useAvailability } from '@/hooks/useAvailability';
+import { useAuth } from '@/hooks/useAuth';
 
 type ActivityItem = {
   id: string;
@@ -25,11 +29,19 @@ type ActivityItem = {
 };
 
 export default function PersonDetailsScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
+  const { id, name, from, fromChatUserId, fromChatName } = useLocalSearchParams<{
+    id: string;
+    name?: string;
+    from?: string;
+    fromChatUserId?: string;
+    fromChatName?: string;
+  }>();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const { availability, loading: availabilityLoading, DAYS_OF_WEEK, TIME_BLOCKS } = useAvailability(id);
+  const { user } = useAuth();
+  const [safetyAction, setSafetyAction] = useState<'report' | 'block' | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -96,12 +108,92 @@ export default function PersonDetailsScreen() {
 
   const displayName = profile?.name || name || 'ActivityHub member';
 
+  const performReportUser = () => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to report users.');
+      return;
+    }
+    const userId = id;
+    const userName = displayName || 'User';
+
+    const email = 'activityhubsercive@gmail.com';
+    const subject = encodeURIComponent(`Report User - ${userId}`);
+    const body = encodeURIComponent(
+      `I would like to report user ${userName} (ID: ${userId}) for the following reason:\n\n`
+    );
+    const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
+    Linking.canOpenURL(mailtoLink).then(supported => {
+      if (supported) {
+        Linking.openURL(mailtoLink);
+      } else {
+        Alert.alert(
+          'Error',
+          `Please email ${email} with subject: "Report User - ${userId}"`
+        );
+      }
+    });
+  };
+
+  const performBlockUser = async () => {
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to block users.');
+      return;
+    }
+    const userId = id;
+    const userName = displayName || 'User';
+
+    try {
+      const { error } = await supabase
+        .from('blocked_users')
+        .upsert(
+          {
+            user_id: user.id,
+            blocked_user_id: userId,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,blocked_user_id' }
+        );
+
+      if (error) {
+        console.error('Error blocking user:', error);
+        Alert.alert('Error', 'Failed to block user. Please try again.');
+      } else {
+        Alert.alert('User Blocked', `${userName} has been blocked.`, [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
+    } catch (error) {
+      console.error('Error blocking user:', error);
+      Alert.alert('Error', 'Failed to block user. Please try again.');
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (from === 'chat' && fromChatUserId) {
+              router.push({
+                pathname: '/chat/[id]',
+                params: { id: fromChatUserId, name: fromChatName || name || '' },
+              });
+              return;
+            }
+            if (from === 'people') {
+              router.push('/(tabs)/people');
+              return;
+            }
+            if (from === 'forum') {
+              router.push('/(tabs)/forum');
+              return;
+            }
+            router.back();
+          }}
+        >
           <Ionicons name="chevron-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
@@ -131,7 +223,7 @@ export default function PersonDetailsScreen() {
             <Text style={styles.name}>{displayName}</Text>
           </View>
 
-          <View style={styles.section}>
+          <View style={[styles.section, styles.sectionGap]}>
             <Text style={styles.sectionTitle}>Availability</Text>
             {availabilityLoading ? (
               <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 16 }} />
@@ -195,15 +287,21 @@ export default function PersonDetailsScreen() {
             )}
           </View>
 
-          <View style={styles.section}>
+          <View style={[styles.section, styles.sectionGap]}>
             <Text style={styles.sectionTitle}>Activities</Text>
             {activities.length === 0 ? (
               <Text style={styles.emptyText}>
                 No activities selected yet.
               </Text>
             ) : (
-              activities.map((activity) => (
-                <View key={activity.id} style={styles.activityRow}>
+              activities.map((activity, index) => (
+                <View
+                  key={activity.id}
+                  style={[
+                    styles.activityRow,
+                    index === activities.length - 1 && styles.activityRowLast,
+                  ]}
+                >
                   <View style={styles.activityInfo}>
                     <Text style={styles.activityEmoji}>
                       {activity.emoji || '🏃'}
@@ -228,8 +326,60 @@ export default function PersonDetailsScreen() {
               ))
             )}
           </View>
+
+          <View style={styles.safetyRow}>
+            <TouchableOpacity style={styles.safetyButton} onPress={() => setSafetyAction('report')}>
+              <Ionicons name="flag-outline" size={18} color="#666" />
+              <Text style={styles.safetyText}>Report user</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.safetyButton, styles.safetyButtonDanger]} onPress={() => setSafetyAction('block')}>
+              <Ionicons name="ban-outline" size={18} color="#D32F2F" />
+              <Text style={[styles.safetyText, styles.safetyTextDanger]}>Block user</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
+      <Modal
+        visible={!!safetyAction}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSafetyAction(null)}
+      >
+        <View style={styles.safetyModalOverlay}>
+          <View style={styles.safetyModalCard}>
+            <Text style={styles.safetyModalTitle}>
+              {safetyAction === 'block' ? 'Block this user?' : 'Report this user?'}
+            </Text>
+            <Text style={styles.safetyModalBody}>
+              {safetyAction === 'block'
+                ? 'Are you sure you want to block this user?'
+                : 'Are you sure you want to report this user?'}
+            </Text>
+            <View style={styles.safetyModalActions}>
+              <TouchableOpacity
+                style={[styles.safetyModalButton, styles.safetyModalCancel]}
+                onPress={() => setSafetyAction(null)}
+              >
+                <Text style={styles.safetyModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.safetyModalButton, styles.safetyModalConfirm]}
+                onPress={async () => {
+                  const action = safetyAction;
+                  setSafetyAction(null);
+                  if (action === 'block') {
+                    await performBlockUser();
+                  } else {
+                    performReportUser();
+                  }
+                }}
+              >
+                <Text style={styles.safetyModalConfirmText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -313,6 +463,96 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  sectionGap: {
+    marginTop: 12,
+  },
+  safetyRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  safetyButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#eee',
+    backgroundColor: '#fafafa',
+  },
+  safetyButtonDanger: {
+    borderColor: '#F2C5C5',
+    backgroundColor: '#FFF5F5',
+  },
+  safetyText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  safetyTextDanger: {
+    color: '#D32F2F',
+  },
+  safetyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  safetyModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+  },
+  safetyModalTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 6,
+  },
+  safetyModalBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 16,
+  },
+  safetyModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  safetyModalButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safetyModalCancel: {
+    backgroundColor: '#FDEDED',
+    borderWidth: 1,
+    borderColor: '#F2C5C5',
+  },
+  safetyModalConfirm: {
+    backgroundColor: '#E8F5E9',
+    borderWidth: 1,
+    borderColor: '#C8E6C9',
+  },
+  safetyModalCancelText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#D32F2F',
+  },
+  safetyModalConfirmText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#2E7D32',
+  },
   sectionTitle: {
     fontSize: 18,
     fontFamily: 'Inter_700Bold',
@@ -328,6 +568,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  activityRowLast: {
+    borderBottomWidth: 0,
   },
   activityInfo: {
     flexDirection: 'row',
@@ -421,5 +664,3 @@ const styles = StyleSheet.create({
     color: 'white',
   },
 });
-
-

@@ -10,6 +10,7 @@ import {
   Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useActivities } from '@/hooks/useActivities';
 import { useProfile } from '@/hooks/useProfile';
 
@@ -40,6 +41,7 @@ export function ActivitySelectionModal({
   const [selectedSkillLevel, setSelectedSkillLevel] = useState<string | null>(null);
   const [readyToday, setReadyToday] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showReadyTodayInfo, setShowReadyTodayInfo] = useState(false);
 
   const getSkillColor = (skillLevel: string) => {
     switch (skillLevel) {
@@ -224,12 +226,7 @@ export function ActivitySelectionModal({
                       <Text style={styles.readyTodayLabel}>READY TODAY?</Text>
                       <TouchableOpacity
                         style={styles.readyTodayInfo}
-                        onPress={() =>
-                          Alert.alert(
-                            'Ready Today',
-                            "Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now."
-                          )
-                        }
+                        onPress={() => setShowReadyTodayInfo(true)}
                       >
                         <Ionicons name="information-circle-outline" size={16} color="#666" />
                       </TouchableOpacity>
@@ -240,6 +237,35 @@ export function ActivitySelectionModal({
                     />
                   </View>
                 </View>
+
+                <Modal
+                  visible={showReadyTodayInfo}
+                  transparent
+                  animationType="fade"
+                  onRequestClose={() => setShowReadyTodayInfo(false)}
+                >
+                  <BlurView intensity={20} style={styles.infoOverlay}>
+                    <View style={styles.infoCard}>
+                      <View style={styles.infoCloseRow}>
+                        <TouchableOpacity
+                          onPress={() => setShowReadyTodayInfo(false)}
+                          style={styles.infoClose}
+                        >
+                          <Ionicons name="close" size={20} color="#666" />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.infoBody}>
+                        Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now.
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.infoPrimaryButton}
+                        onPress={() => setShowReadyTodayInfo(false)}
+                      >
+                        <Text style={styles.infoPrimaryText}>Got it</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </BlurView>
+                </Modal>
 
                 <TouchableOpacity
                   style={[
@@ -531,6 +557,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  infoOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  infoCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  infoCloseRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  infoClose: {
+    padding: 4,
+  },
+  infoBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#555',
+    lineHeight: 20,
+    marginHorizontal: 5,
+    marginBottom: 16,
+  },
+  infoPrimaryButton: {
+    alignSelf: 'center',
+    backgroundColor: '#FF8C42',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  infoPrimaryText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
   readyToggle: {
     width: 52,

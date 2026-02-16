@@ -7,6 +7,7 @@ import {
   ScrollView,
   Image,
   Alert,
+  Modal,
   ActivityIndicator,
   Animated,
 } from 'react-native';
@@ -16,6 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/hooks/useAuth';
 import { useActivities } from '@/hooks/useActivities';
@@ -35,6 +37,8 @@ export default function ProfileScreen() {
   const { activities } = useActivities();
   const { availability, loading: availabilityLoading, updateAvailability, DAYS_OF_WEEK, TIME_BLOCKS } = useAvailability();
   const [showActivityModal, setShowActivityModal] = useState(false);
+  const [showAvailabilityInfo, setShowAvailabilityInfo] = useState(false);
+  const [showReadyTodayInfo, setShowReadyTodayInfo] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const hasActivities = userSkills.some((userSkill) => userSkill.activities);
 
@@ -860,12 +864,7 @@ For support: activityhubsercive@gmail.com`,
                       <Text style={styles.readyTodayLabel}>READY TODAY?</Text>
                       <TouchableOpacity
                         style={styles.readyTodayInfo}
-                        onPress={() =>
-                          Alert.alert(
-                            'Ready Today',
-                            "Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now."
-                          )
-                        }
+                        onPress={() => setShowReadyTodayInfo(true)}
                       >
                         <Ionicons name="information-circle-outline" size={14} color="#666" />
                       </TouchableOpacity>
@@ -901,11 +900,39 @@ For support: activityhubsercive@gmail.com`,
         />
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>When are you available?</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitleInline}>My Availability</Text>
+            <TouchableOpacity
+              style={styles.sectionInfoButton}
+              onPress={() => setShowAvailabilityInfo(true)}
+            >
+              <Ionicons name="information-circle-outline" size={18} color="#666" />
+            </TouchableOpacity>
+          </View>
+          <LinearGradient
+            colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.activitiesDivider}
+          />
           {availabilityLoading ? (
             <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 16 }} />
           ) : (
             <View style={styles.availabilityContainer}>
+              <View style={styles.availabilityHeaderRow}>
+                <Text style={styles.availabilityHeaderSpacer} />
+                <View style={styles.availabilityTimeBlocks}>
+                  {TIME_BLOCKS.map((timeBlock) => {
+                    const timeBlockLabel = timeBlock.charAt(0).toUpperCase() + timeBlock.slice(1);
+                    return (
+                      <View key={timeBlock} style={styles.availabilityHeaderCell}>
+                        <Text style={styles.availabilityHeaderText}>{timeBlockLabel}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
               {DAYS_OF_WEEK.map((dayName, dayIndex) => {
                 const daySlots = availability.filter(
                   (slot) => slot.day_of_week === dayIndex
@@ -913,7 +940,7 @@ For support: activityhubsercive@gmail.com`,
                 return (
                   <View key={dayIndex} style={styles.availabilityDayRow}>
                     <Text style={styles.availabilityDayLabel}>
-                      {dayName.substring(0, 3)}
+                      {dayName}
                     </Text>
                     <View style={styles.availabilityTimeBlocks}>
                       {TIME_BLOCKS.map((timeBlock) => {
@@ -921,37 +948,29 @@ For support: activityhubsercive@gmail.com`,
                           (s) => s.time_block === timeBlock
                         );
                         const isEnabled = slot?.enabled || false;
-                        const timeBlockLabel = timeBlock.charAt(0).toUpperCase() + timeBlock.slice(1);
                         return (
-                          <TouchableOpacity
-                            key={timeBlock}
-                            style={[
-                              styles.availabilityBlock,
-                              isEnabled && styles.availabilityBlockEnabled,
-                            ]}
-                            onPress={() => {
-                              updateAvailability(
-                                dayIndex as any,
-                                timeBlock,
-                                !isEnabled
-                              ).catch(console.error);
-                            }}
-                          >
-                            <Ionicons
-                              name="checkmark"
-                              size={16}
-                              color={isEnabled ? 'white' : '#999'}
-                              style={styles.availabilityCheckmark}
-                            />
-                            <Text
+                          <View key={timeBlock} style={styles.availabilityCell}>
+                            <TouchableOpacity
                               style={[
-                                styles.availabilityBlockText,
-                                isEnabled && styles.availabilityBlockTextEnabled,
+                                styles.availabilityBlock,
+                                isEnabled && styles.availabilityBlockEnabled,
                               ]}
+                              onPress={() => {
+                                updateAvailability(
+                                  dayIndex as any,
+                                  timeBlock,
+                                  !isEnabled
+                                ).catch(console.error);
+                              }}
                             >
-                              {timeBlockLabel}
-                            </Text>
-                          </TouchableOpacity>
+                              <Ionicons
+                                name={isEnabled ? 'checkmark' : 'close'}
+                                size={12}
+                                color={isEnabled ? 'white' : '#B0B0B0'}
+                                style={styles.availabilityCheckmark}
+                              />
+                            </TouchableOpacity>
+                          </View>
                         );
                       })}
                     </View>
@@ -962,8 +981,76 @@ For support: activityhubsercive@gmail.com`,
           )}
         </View>
 
+        <Modal
+          visible={showAvailabilityInfo}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowAvailabilityInfo(false)}
+        >
+          <BlurView intensity={20} style={styles.infoOverlay}>
+            <View style={styles.infoCard}>
+              <View style={styles.infoCloseRow}>
+                <TouchableOpacity
+                  onPress={() => setShowAvailabilityInfo(false)}
+                  style={styles.infoClose}
+                >
+                  <Ionicons name="close" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.infoBody}>
+                <Text style={styles.infoBodyBold}>Choose</Text>
+                {' '}the times you’re usually free so others know when you’re open to play or meet up.{'\n'}{'\n'}
+                <Text style={styles.infoBodyBold}>Tap</Text>
+                {' '}a box to mark yourself available.
+              </Text>
+              <TouchableOpacity
+                style={styles.infoPrimaryButton}
+                onPress={() => setShowAvailabilityInfo(false)}
+              >
+                <Text style={styles.infoPrimaryText}>I’m Ready</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </Modal>
+
+        <Modal
+          visible={showReadyTodayInfo}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowReadyTodayInfo(false)}
+        >
+          <BlurView intensity={20} style={styles.infoOverlay}>
+            <View style={styles.infoCard}>
+              <View style={styles.infoCloseRow}>
+                <TouchableOpacity
+                  onPress={() => setShowReadyTodayInfo(false)}
+                  style={styles.infoClose}
+                >
+                  <Ionicons name="close" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.infoBody}>
+                Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now.
+              </Text>
+              <TouchableOpacity
+                style={styles.infoPrimaryButton}
+                onPress={() => setShowReadyTodayInfo(false)}
+              >
+                <Text style={styles.infoPrimaryText}>Got it</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </Modal>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Settings</Text>
+          <LinearGradient
+            colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.activitiesDivider}
+          />
           
           <TouchableOpacity style={styles.settingItem} onPress={handleAppSettings}>
                 <Ionicons name="settings" size={20} color="#333" />
@@ -1111,6 +1198,53 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
     gap: 12,
+  },
+  sectionInfoButton: {
+    padding: 4,
+  },
+  infoOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  infoCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  infoCloseRow: {
+    alignItems: 'flex-end',
+    marginBottom: 4,
+  },
+  infoClose: {
+    padding: 4,
+  },
+  infoBody: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#555',
+    lineHeight: 20,
+    marginHorizontal: 5,
+    marginBottom: 16,
+  },
+  infoPrimaryButton: {
+    alignSelf: 'center',
+    backgroundColor: '#FF8C42',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  infoPrimaryText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
   activitiesDivider: {
     height: 3,
@@ -1291,6 +1425,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
   },
+  infoBodyBold: {
+    fontFamily: 'Inter_700Bold',
+    color: '#555',
+  },
   emptySubtitle: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
@@ -1319,6 +1457,32 @@ const styles = StyleSheet.create({
   },
   availabilityContainer: {
     marginTop: 8,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+    borderRadius: 12,
+    padding: 12,
+  },
+  availabilityHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  availabilityHeaderSpacer: {
+    width: 52,
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#9CA3AF',
+  },
+  availabilityHeaderCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  availabilityHeaderText: {
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
   },
   availabilityDayRow: {
     flexDirection: 'row',
@@ -1326,41 +1490,42 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   availabilityDayLabel: {
-    width: 50,
-    fontSize: 14,
+    width: 52,
+    fontSize: 8,
     fontFamily: 'Inter_600SemiBold',
-    color: '#333',
+    color: '#374151',
+    textTransform: 'uppercase',
   },
   availabilityTimeBlocks: {
     flexDirection: 'row',
     gap: 8,
     flex: 1,
   },
-  availabilityBlock: {
+  availabilityCell: {
     flex: 1,
-    minHeight: 40,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+  },
+  availabilityBlock: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#E3E3E3',
     justifyContent: 'center',
     alignItems: 'center',
     flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 4,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    gap: 0,
+    alignSelf: 'center',
   },
   availabilityBlockEnabled: {
     backgroundColor: '#4CAF50',
     borderColor: '#4CAF50',
   },
   availabilityCheckmark: {
-    marginRight: 2,
-  },
-  availabilityBlockText: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#999',
+    marginRight: 0,
   },
   availabilityBlockTextEnabled: {
     color: 'white',

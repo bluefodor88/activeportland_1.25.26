@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Modal,
   ScrollView,
   Alert,
-  Switch,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useActivities } from '@/hooks/useActivities';
@@ -218,15 +218,27 @@ export function ActivitySelectionModal({
                   ))}
                 </View>
 
-                <View style={styles.readyTodayContainer}>
-                  <Text style={styles.readyTodayLabel}>Ready today</Text>
-                  <Switch
-                    value={readyToday}
-                    onValueChange={setReadyToday}
-                    trackColor={{ false: '#e0e0e0', true: '#4CAF50' }}
-                    thumbColor={readyToday ? '#fff' : '#f4f3f4'}
-                    ios_backgroundColor="#e0e0e0"
-                  />
+                <View style={styles.readyTodayBox}>
+                  <View style={styles.readyTodayRow}>
+                    <View style={styles.readyTodayLabelGroup}>
+                      <Text style={styles.readyTodayLabel}>READY TODAY?</Text>
+                      <TouchableOpacity
+                        style={styles.readyTodayInfo}
+                        onPress={() =>
+                          Alert.alert(
+                            'Ready Today',
+                            "Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now."
+                          )
+                        }
+                      >
+                        <Ionicons name="information-circle-outline" size={16} color="#666" />
+                      </TouchableOpacity>
+                    </View>
+                    <ReadyTodayToggle
+                      value={readyToday}
+                      onToggle={() => setReadyToday((prev) => !prev)}
+                    />
+                  </View>
                 </View>
 
                 <TouchableOpacity
@@ -264,6 +276,33 @@ export function ActivitySelectionModal({
         </View>
       </View>
     </Modal>
+  );
+}
+
+function ReadyTodayToggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
+  const translate = useRef(new Animated.Value(value ? 22 : 2)).current;
+
+  useEffect(() => {
+    Animated.timing(translate, {
+      toValue: value ? 22 : 2,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [value, translate]);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onToggle}
+      style={[styles.readyToggle, value ? styles.readyToggleOn : styles.readyToggleOff]}
+    >
+      <Animated.View
+        style={[
+          styles.readyToggleThumb,
+          { transform: [{ translateX: translate }] },
+        ]}
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -461,17 +500,60 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: '#666',
   },
-  readyTodayContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+  readyTodayBox: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 24,
     marginTop: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  readyTodayLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
   },
   readyTodayLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter_500Medium',
-    color: '#333',
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#555',
+    letterSpacing: 0.4,
+  },
+  readyTodayInfo: {
+    padding: 2,
+  },
+  readyTodayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  readyToggle: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  readyToggleOn: {
+    backgroundColor: '#4CD964',
+  },
+  readyToggleOff: {
+    backgroundColor: '#E5E5EA',
+  },
+  readyToggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
 });

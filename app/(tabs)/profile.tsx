@@ -15,6 +15,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useProfile } from '@/hooks/useProfile';
 import { useAuth } from '@/hooks/useAuth';
 import { useActivities } from '@/hooks/useActivities';
@@ -35,6 +36,7 @@ export default function ProfileScreen() {
   const { availability, loading: availabilityLoading, updateAvailability, DAYS_OF_WEEK, TIME_BLOCKS } = useAvailability();
   const [showActivityModal, setShowActivityModal] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const hasActivities = userSkills.some((userSkill) => userSkill.activities);
 
   // Fetch blocked users
   const fetchBlockedUsers = useCallback(async () => {
@@ -801,15 +803,27 @@ For support: activityhubsercive@gmail.com`,
         </View>
 
         <View style={styles.section}>
-          <View style={styles.addButtonContainer}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitleInline} numberOfLines={1}>
+              My Activities
+            </Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => setShowActivityModal(true)}
             >
-              <Ionicons name="add" size={20} color="white" />
-              <Text style={styles.addButtonText}>Add Activity</Text>
+              <Ionicons name="add" size={18} color="white" />
+              <Text style={styles.addButtonText} numberOfLines={1}>
+                Add Activity
+              </Text>
             </TouchableOpacity>
           </View>
+          <LinearGradient
+            colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.activitiesDivider, !hasActivities && styles.activitiesDividerTight]}
+          />
           {userSkills
             .filter((userSkill) => userSkill.activities) // Filter out any without activities
             .sort((a, b) => {
@@ -821,6 +835,13 @@ For support: activityhubsercive@gmail.com`,
             .map((userSkill) => {
             return (
               <View key={userSkill.id} style={styles.skillItemContainer}>
+                <TouchableOpacity
+                  style={styles.removeIconButton}
+                  onPress={() => handleRemoveActivity(userSkill.activity_id, userSkill.activities!.name)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={14} color="#9AA0A6" />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.skillItem}
                   onPress={() => handleSkillLevelChange(userSkill.activities!.name)}
@@ -835,7 +856,20 @@ For support: activityhubsercive@gmail.com`,
                 </TouchableOpacity>
                 <View style={styles.skillItemActions}>
                   <View style={styles.readyTodayContainer}>
-                    <Text style={styles.readyTodayLabel}>Ready today</Text>
+                    <View style={styles.readyTodayLabelGroup}>
+                      <Text style={styles.readyTodayLabel}>READY TODAY?</Text>
+                      <TouchableOpacity
+                        style={styles.readyTodayInfo}
+                        onPress={() =>
+                          Alert.alert(
+                            'Ready Today',
+                            "Turn this on if you’re available to join this activity today. It helps others know you’re up for plans now."
+                          )
+                        }
+                      >
+                        <Ionicons name="information-circle-outline" size={14} color="#666" />
+                      </TouchableOpacity>
+                    </View>
                     <ReadyTodayToggle
                       value={!!userSkill.ready_today}
                       onToggle={() => {
@@ -843,12 +877,6 @@ For support: activityhubsercive@gmail.com`,
                       }}
                     />
                   </View>
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveActivity(userSkill.activity_id, userSkill.activities!.name)}
-                  >
-                    <Text style={styles.removeText}>Remove</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
             );
@@ -856,7 +884,7 @@ For support: activityhubsercive@gmail.com`,
           {userSkills.length === 0 && (
             <View style={styles.emptyStateContainer}>
               <Text style={styles.noActivitiesText}>
-                No activities selected yet.
+                Ready to dive in? Tap “Add Activity” to personalize your profile and meet others.
               </Text>
             </View>
           )}
@@ -1069,28 +1097,47 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 16,
   },
-  addButtonContainer: {
+  sectionTitleInline: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 0,
+    flex: 1,
+    flexShrink: 1,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
+    gap: 12,
+  },
+  activitiesDivider: {
+    height: 3,
+    borderRadius: 2,
+    marginBottom: 10,
+  },
+  activitiesDividerTight: {
+    marginBottom: 4,
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FF8C42',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: 20,
     gap: 6,
   },
   addButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontFamily: 'Inter_600SemiBold',
     color: 'white',
   },
   emptyStateContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
+    alignItems: 'flex-start',
+    paddingTop: 2,
+    paddingBottom: 0,
   },
   addFirstButton: {
     flexDirection: 'row',
@@ -1108,31 +1155,52 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   skillItemContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    paddingVertical: 12,
+    backgroundColor: '#FAFAFA',
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    borderRadius: 12,
+    paddingTop: 24,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    position: 'relative',
   },
   skillItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
+    gap: 8,
   },
   skillItemActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
-    marginTop: 4,
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#ececec',
   },
   readyTodayContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 10,
+    marginRight: 12,
+  },
+  readyTodayLabelGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   readyTodayLabel: {
     fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: '#666',
+    fontFamily: 'Inter_600SemiBold',
+    color: '#555',
+  },
+  readyTodayInfo: {
+    padding: 2,
   },
   readyToggle: {
     width: 52,
@@ -1165,14 +1233,13 @@ const styles = StyleSheet.create({
   },
   activityName: {
     fontSize: 16,
-    fontFamily: 'Inter_400Regular',
+    fontFamily: 'Inter_600SemiBold',
     color: '#333',
-    marginLeft: 8,
     marginRight: 12,
     flex: 1,
   },
   activityEmoji: {
-    fontSize: 40,
+    fontSize: 32,
   },
   skillBadge: {
     paddingHorizontal: 8,
@@ -1184,13 +1251,15 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: 'white',
   },
-  removeButton: {
-    // No background, just text
-  },
-  removeText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    color: '#f44336',
+  removeIconButton: {
+    position: 'absolute',
+    top: 6,
+    left: 8,
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
   },
   settingItem: {
     flexDirection: 'row',
@@ -1206,12 +1275,13 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   noActivitiesText: {
-    fontSize: 14,
+    fontSize: 10,
     fontFamily: 'Inter_400Regular',
     color: '#666',
     textAlign: 'center',
     fontStyle: 'italic',
-    paddingVertical: 20,
+    paddingTop: 2,
+    paddingBottom: 2,
   },
   emptyTitle: {
     fontSize: 18,

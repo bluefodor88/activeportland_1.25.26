@@ -6,18 +6,19 @@ import React, {
   useCallback,
 } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useActivityStore } from '@/store/useActivityStore';
 import { useProfile } from '@/hooks/useProfile';
 import { useActivities } from '@/hooks/useActivities';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ITEM_WIDTH = 70;
 const ITEM_SPACING = 10;
 const CENTER_OFFSET = (SCREEN_WIDTH - ITEM_WIDTH) / 2;
+const UNREAD_STORAGE_KEY = (userId: string) => `forum_last_seen_${userId}`;
 
 interface UserActivity {
   id: string;
@@ -46,6 +47,7 @@ export function ActivityCarousel() {
   const scrollViewRef = useRef<ScrollView>(null);
   const itemCentersRef = useRef<number[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Track scrolling state to prevent loops
   const isScrollingRef = useRef(false);
@@ -210,6 +212,59 @@ export function ActivityCarousel() {
 
   const isLoading = user ? profileLoading : activitiesLoading;
 
+  const loadUnreadCounts = useCallback(async () => {
+    if (!user || displayActivities.length === 0) {
+      setUnreadCounts({});
+      return;
+    }
+
+    try {
+      const stored = await AsyncStorage.getItem(UNREAD_STORAGE_KEY(user.id));
+      const lastSeenMap = stored ? JSON.parse(stored) : {};
+
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        displayActivities.map(async (activity) => {
+          const lastSeen = lastSeenMap?.[activity.activity_id];
+          let query = supabase
+            .from('forum_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('activity_id', activity.activity_id);
+
+          if (lastSeen) {
+            query = query.gt('created_at', lastSeen);
+          }
+          if (user?.id) {
+            query = query.neq('user_id', user.id);
+          }
+
+          const { count, error } = await query;
+          counts[activity.activity_id] = error ? 0 : count || 0;
+        })
+      );
+
+      setUnreadCounts(counts);
+    } catch (error) {
+      console.error('Error loading unread counts:', error);
+      setUnreadCounts({});
+    }
+  }, [user, displayActivities]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadCounts();
+    }, [loadUnreadCounts])
+  );
+
+  useEffect(() => {
+    loadUnreadCounts();
+  }, [activityId, loadUnreadCounts]);
+
+  useEffect(() => {
+    if (!activityId) return;
+    setUnreadCounts((prev) => ({ ...prev, [activityId]: 0 }));
+  }, [activityId]);
+
   if (isLoading && displayActivities.length === 0) {
     return (
       <View style={styles.container}>
@@ -257,6 +312,7 @@ export function ActivityCarousel() {
 
         {displayActivities.map((activity, index) => {
           const isSelected = index === currentIndex;
+          const unreadCount = unreadCounts[activity.activity_id] || 0;
           return (
             <TouchableOpacity
               key={`${activity.id}-${activity.activity_id}`}
@@ -278,6 +334,13 @@ export function ActivityCarousel() {
                 <Text style={styles.emoji}>
                   {activity.emoji}
                 </Text>
+                {unreadCount > 0 && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Text>
+                  </View>
+                )}
               </View>
               <Text
                 style={[
@@ -324,6 +387,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
     position: 'relative',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FF6B35',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
   },
   activityItemSelected: {
     backgroundColor: '#fff5e6',

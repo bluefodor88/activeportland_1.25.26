@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -30,7 +31,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 
 export default function ForumScreen() {
-  const { activityId, activity, skillLevel, emoji } = useActivityStore();
+  const { activityId, activity, skillLevel, emoji, touchForumLastSeen } = useActivityStore();
 
   const { messages, loading, sendMessage } = useForumMessages(activityId);
   const { profile } = useProfile();
@@ -46,10 +47,54 @@ export default function ForumScreen() {
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const [showForumHeader, setShowForumHeader] = useState(true);
+  const lastSeenKey = user?.id ? `forum_last_seen_${user.id}` : null;
+  const [dividerLastSeenAt, setDividerLastSeenAt] = useState<string | null>(null);
 
   useEffect(() => {
     setShowForumHeader(true);
   }, [activityId]);
+
+  useEffect(() => {
+    if (!lastSeenKey || !activityId) {
+      setDividerLastSeenAt(null);
+      return;
+    }
+
+    const loadLastSeen = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(lastSeenKey);
+        const lastSeenMap = stored ? JSON.parse(stored) : {};
+        setDividerLastSeenAt(lastSeenMap?.[activityId] || null);
+      } catch (error) {
+        console.error('Error loading last seen time:', error);
+        setDividerLastSeenAt(null);
+      }
+    };
+
+    loadLastSeen();
+  }, [activityId, lastSeenKey]);
+
+  useEffect(() => {
+    if (!user || !activityId || loading) return;
+    if (!lastSeenKey) return;
+
+    const latestMessageAt = messages[0]?.created_at;
+    const seenAt = latestMessageAt || new Date().toISOString();
+
+    const updateLastSeen = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(lastSeenKey);
+        const lastSeenMap = stored ? JSON.parse(stored) : {};
+        lastSeenMap[activityId] = seenAt;
+        await AsyncStorage.setItem(lastSeenKey, JSON.stringify(lastSeenMap));
+        touchForumLastSeen();
+      } catch (error) {
+        console.error('Error saving last seen time:', error);
+      }
+    };
+
+    updateLastSeen();
+  }, [user, activityId, loading, messages, lastSeenKey]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -150,20 +195,41 @@ export default function ForumScreen() {
     }
   };
 
-  const renderMessage = ({ item }: { item: any }) => (
-    <ForumMessageItem
-      item={item}
-      currentUserId={user?.id}
-      profileName={profile?.name}
-      messages={messages}
-      highlightedId={highlightedMessageId}
-      skillLevel={skillLevel}
-      onLongPress={handleLongPress}
-      onOpenChat={openUserChat}
-      onOpenGallery={openGallery}
-      onScrollToMessage={scrollToMessage}
-    />
-  );
+  const isUnread = (message: any) => {
+    if (!dividerLastSeenAt) return false;
+    if (message.user_id === user?.id) return false;
+    return new Date(message.created_at).getTime() > new Date(dividerLastSeenAt).getTime();
+  };
+
+  const renderMessage = ({ item, index }: { item: any; index: number }) => {
+    const prevMessage = messages[index - 1];
+    const showDivider =
+      index > 0 && !isUnread(item) && prevMessage && isUnread(prevMessage);
+
+    return (
+      <View>
+        {showDivider && (
+          <View style={styles.newDivider}>
+            <View style={styles.newDividerLine} />
+            <Text style={styles.newDividerText}>New Messages</Text>
+            <View style={styles.newDividerLine} />
+          </View>
+        )}
+        <ForumMessageItem
+          item={item}
+          currentUserId={user?.id}
+          profileName={profile?.name}
+          messages={messages}
+          highlightedId={highlightedMessageId}
+          skillLevel={skillLevel}
+          onLongPress={handleLongPress}
+          onOpenChat={openUserChat}
+          onOpenGallery={openGallery}
+          onScrollToMessage={scrollToMessage}
+        />
+      </View>
+    );
+  };
 
   // Only show loading if we have an activity but messages are still loading
   if (loading && activityId) {
@@ -539,6 +605,24 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  newDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  newDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E6E6E6',
+  },
+  newDividerText: {
+    marginHorizontal: 10,
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#999',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   replyContainer: {
     flexDirection: 'row',

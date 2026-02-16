@@ -6,6 +6,14 @@ import { useChats } from '@/hooks/useChats';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
 import { View, Text, StyleSheet } from 'react-native';
+import { useProfile } from '@/hooks/useProfile';
+import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState, useCallback } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useActivityStore } from '@/store/useActivityStore';
+
+const FORUM_UNREAD_KEY = (userId: string) => `forum_last_seen_${userId}`;
 
 function ChatTabIcon({ size, color }: { size: number; color: string }) {
   const { chats } = useChats();
@@ -18,6 +26,81 @@ function ChatTabIcon({ size, color }: { size: number; color: string }) {
         <View style={styles.unreadBadge}>
           <Text style={styles.unreadText}>
             {unreadChatCount > 99 ? '99+' : unreadChatCount.toString()}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ForumTabIcon({ size, color }: { size: number; color: string }) {
+  const { user } = useAuth();
+  const { userSkills } = useProfile();
+  const { forumLastSeenVersion } = useActivityStore();
+  const [unreadTotal, setUnreadTotal] = useState(0);
+
+  const loadUnreadTotal = useCallback(async () => {
+    if (!user) {
+      setUnreadTotal(0);
+      return;
+    }
+
+    const activities = (userSkills || [])
+      .filter((skill: any) => skill.activities)
+      .map((skill: any) => skill.activity_id);
+
+    if (activities.length === 0) {
+      setUnreadTotal(0);
+      return;
+    }
+
+    try {
+      const stored = await AsyncStorage.getItem(FORUM_UNREAD_KEY(user.id));
+      const lastSeenMap = stored ? JSON.parse(stored) : {};
+
+      let total = 0;
+      await Promise.all(
+        activities.map(async (activityId: string) => {
+          const lastSeen = lastSeenMap?.[activityId];
+          let query = supabase
+            .from('forum_messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('activity_id', activityId);
+
+          if (lastSeen) {
+            query = query.gt('created_at', lastSeen);
+          }
+          query = query.neq('user_id', user.id);
+
+          const { count, error } = await query;
+          if (!error && count) total += count;
+        })
+      );
+
+      setUnreadTotal(total);
+    } catch (error) {
+      console.error('Error loading forum unread total:', error);
+      setUnreadTotal(0);
+    }
+  }, [user, userSkills]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadTotal();
+    }, [loadUnreadTotal])
+  );
+
+  useEffect(() => {
+    loadUnreadTotal();
+  }, [loadUnreadTotal, forumLastSeenVersion]);
+
+  return (
+    <View style={styles.tabIconContainer}>
+      <Ionicons name="chatbubbles-outline" size={size} color={color} />
+      {unreadTotal > 0 && (
+        <View style={styles.forumUnreadBadge}>
+          <Text style={styles.unreadText}>
+            {unreadTotal > 99 ? '99+' : unreadTotal.toString()}
           </Text>
         </View>
       )}
@@ -46,6 +129,19 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 10,
     fontFamily: 'Inter_700Bold',
+  },
+  forumUnreadBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#FF6B35',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
   },
 });
 
@@ -102,7 +198,7 @@ export default function TabLayout() {
             options={{
               title: 'Forum',
               tabBarIcon: ({ size, color }) => (
-                <Ionicons name="chatbubbles-outline" size={size} color={color} />
+                <ForumTabIcon size={size} color={color} />
               ),
             }}
           />

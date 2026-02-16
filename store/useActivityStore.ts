@@ -5,6 +5,7 @@ interface ActivityState {
   activity: string;
   skillLevel: string;
   emoji: string;
+  forumLastSeenVersion: number;
   
   setActivity: (params: {
     activityId: string;
@@ -12,6 +13,7 @@ interface ActivityState {
     skillLevel: string;
     emoji: string;
   }) => void;
+  touchForumLastSeen: () => void;
 }
 
 export const useActivityStore = create<ActivityState>((set, get) => ({
@@ -19,6 +21,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   activity: '',
   skillLevel: '',
   emoji: '',
+  forumLastSeenVersion: 0,
 
   setActivity: (params) => {
     const current = get();
@@ -33,5 +36,8 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     }
 
     set(params);
+  },
+  touchForumLastSeen: () => {
+    set((state) => ({ forumLastSeenVersion: state.forumLastSeenVersion + 1 }));
   },
 }));

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Image,
   Alert,
   ActivityIndicator,
-  Switch,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -836,15 +836,11 @@ For support: activityhubsercive@gmail.com`,
                 <View style={styles.skillItemActions}>
                   <View style={styles.readyTodayContainer}>
                     <Text style={styles.readyTodayLabel}>Ready today</Text>
-                    <Switch
-                      value={userSkill.ready_today || false}
-                      onValueChange={(value) => {
-                        updateReadyToday(userSkill.activity_id, value).catch(console.error);
+                    <ReadyTodayToggle
+                      value={!!userSkill.ready_today}
+                      onToggle={() => {
+                        updateReadyToday(userSkill.activity_id, !userSkill.ready_today).catch(console.error);
                       }}
-                      trackColor={{ false: '#E5E5EA', true: '#4CD964' }}
-                      thumbColor="#FFFFFF"
-                      ios_backgroundColor="#E5E5EA"
-                      style={{ transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }] }}
                     />
                   </View>
                   <TouchableOpacity
@@ -958,6 +954,33 @@ For support: activityhubsercive@gmail.com`,
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function ReadyTodayToggle({ value, onToggle }: { value: boolean; onToggle: () => void }) {
+  const translate = useRef(new Animated.Value(value ? 22 : 2)).current;
+
+  useEffect(() => {
+    Animated.timing(translate, {
+      toValue: value ? 22 : 2,
+      duration: 180,
+      useNativeDriver: true,
+    }).start();
+  }, [value, translate]);
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onToggle}
+      style={[styles.readyToggle, value ? styles.readyToggleOn : styles.readyToggleOff]}
+    >
+      <Animated.View
+        style={[
+          styles.readyToggleThumb,
+          { transform: [{ translateX: translate }] },
+        ]}
+      />
+    </TouchableOpacity>
   );
 }
 
@@ -1110,6 +1133,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_500Medium',
     color: '#666',
+  },
+  readyToggle: {
+    width: 52,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  readyToggleOn: {
+    backgroundColor: '#4CD964',
+  },
+  readyToggleOff: {
+    backgroundColor: '#E5E5EA',
+  },
+  readyToggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   skillInfo: {
     flexDirection: 'row',

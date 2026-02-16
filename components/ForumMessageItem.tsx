@@ -121,7 +121,7 @@ const ForumMessageItem = React.memo(
               if (item.user_id && item.user_id !== currentUserId) {
                 router.push({
                   pathname: '/(tabs)/people/[id]',
-                  params: { id: item.user_id, name: item.profiles?.name },
+                  params: { id: item.user_id, name: item.profiles?.name, from: 'forum' },
                 });
               }
             }}

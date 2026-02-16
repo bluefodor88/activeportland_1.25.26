@@ -841,9 +841,10 @@ For support: activityhubsercive@gmail.com`,
                       onValueChange={(value) => {
                         updateReadyToday(userSkill.activity_id, value).catch(console.error);
                       }}
-                      trackColor={{ false: '#e0e0e0', true: '#4CAF50' }}
-                      thumbColor={userSkill.ready_today ? '#fff' : '#f4f3f4'}
-                      ios_backgroundColor="#e0e0e0"
+                      trackColor={{ false: '#E5E5EA', true: '#4CD964' }}
+                      thumbColor="#FFFFFF"
+                      ios_backgroundColor="#E5E5EA"
+                      style={{ transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }] }}
                     />
                   </View>
                   <TouchableOpacity

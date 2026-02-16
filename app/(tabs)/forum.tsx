@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -45,6 +45,11 @@ export default function ForumScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [showForumHeader, setShowForumHeader] = useState(true);
+
+  useEffect(() => {
+    setShowForumHeader(true);
+  }, [activityId]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -182,15 +187,24 @@ export default function ForumScreen() {
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.header}>
-          <View style={styles.headerGradient} />
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Forum</Text>
-            <Text style={styles.description} numberOfLines={2}>
-              Connect with everyone in your area to share tips and build community
-            </Text>
+        {showForumHeader && (
+          <View style={styles.header}>
+            <View style={styles.headerGradient} />
+            <View style={styles.titleContainer}>
+              <Text style={styles.title}>Forum</Text>
+              <Text style={styles.description} numberOfLines={2}>
+                Connect with everyone in your area to share tips and build community
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.headerClose}
+              onPress={() => setShowForumHeader(false)}
+              accessibilityLabel="Dismiss forum info"
+            >
+              <Ionicons name="close" size={18} color="#666" />
+            </TouchableOpacity>
           </View>
-        </View>
+        )}
 
         {activityId ? (
           <FlatList
@@ -335,6 +349,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible',
     zIndex: 1,
+    position: 'relative',
   },
   headerGradient: {
     position: 'absolute',
@@ -355,6 +370,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
     width: '100%',
+    paddingRight: 24,
   },
   description: {
     fontSize: 11,
@@ -362,6 +378,16 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 14,
     width: '100%',
+  },
+  headerClose: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subtitle: {
     fontSize: 14,

@@ -43,7 +43,7 @@ supabase db push
    supabase functions deploy send-push-notification
    ```
 
-## Step 3: Set Up Database Webhook
+## Step 3: Set Up Database Webhook (Chat Messages)
 
 1. Go to Supabase Dashboard > Database > Webhooks
 2. Click "Create a new webhook"
@@ -75,14 +75,32 @@ supabase db push
 
 **Note**: The webhook body syntax above is simplified. You may need to use Supabase's webhook transformation feature or create a simpler webhook that calls a database function.
 
-## Step 4: Alternative - Use pg_net Extension
+## Step 4: Set Up Database Webhook (Forum Messages)
+
+1. Go to Supabase Dashboard > Database > Webhooks
+2. Click "Create a new webhook"
+3. Configure:
+   - **Name**: Send Forum Push Notification
+   - **Table**: `forum_messages`
+   - **Events**: INSERT
+   - **HTTP Request**
+     - **URL**: `https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-push-notification`
+     - **Method**: POST
+     - **Headers**:
+       ```
+       Authorization: Bearer YOUR_SERVICE_ROLE_KEY
+       Content-Type: application/json
+       ```
+     - **Request Body** (Advanced): leave empty (Edge Function can parse the webhook payload)
+
+## Step 5: Alternative - Use pg_net Extension
 
 If your Supabase project has the `pg_net` extension enabled, you can use the trigger-based approach instead of webhooks.
 
 1. Enable pg_net extension in Supabase Dashboard > Database > Extensions
 2. The trigger in the migration will automatically work
 
-## Step 5: Test
+## Step 6: Test
 
 1. Build and install the app on a device
 2. Log in with two different accounts
@@ -121,4 +139,3 @@ If your Supabase project has the `pg_net` extension enabled, you can use the tri
 - **Supabase Edge Functions**: Free tier includes 500,000 invocations/month
 - **Expo Push Notifications**: Free, unlimited
 - **Total**: $0 for most apps
-

@@ -11,6 +11,16 @@ interface PushNotificationPayload {
   data?: any;
 }
 
+const EXPO_PUSH_BATCH_SIZE = 100;
+
+const chunkNotifications = (items: PushNotificationPayload[], size: number) => {
+  const chunks: PushNotificationPayload[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
 serve(async (req) => {
   try {
     // Handle CORS
@@ -32,7 +42,8 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    let recipientUserId: string;
+    let recipientUserId = "";
+    let recipientUserIds: string[] = [];
     let title: string;
     let body: string;
     let data: any;
@@ -74,7 +85,7 @@ serve(async (req) => {
       const senderName = senderProfile?.name || "Someone";
 
       // Format notification
-      title = `New message from ${senderName}`;
+      title = senderName;
       body = messageText.length > 100 ? messageText.substring(0, 100) + "..." : messageText;
       data = {
         type: "new_message",
@@ -84,6 +95,66 @@ serve(async (req) => {
       };
 
       console.log(`✅ Processed webhook: recipient=${recipientUserId}, sender=${senderName}`);
+    } else if (requestBody.type === "INSERT" && requestBody.table === "forum_messages" && requestBody.record) {
+      console.log("🔔 Processing webhook payload for forum message");
+      const messageRecord = requestBody.record;
+      const senderId = messageRecord.user_id;
+      const activityId = messageRecord.activity_id;
+      const messageText = messageRecord.message || "📷 Photo";
+
+      const { data: senderProfile } = await supabase
+        .from("profiles")
+        .select("name")
+        .eq("id", senderId)
+        .single();
+
+      const senderName = senderProfile?.name || "Someone";
+
+      const { data: activity } = await supabase
+        .from("activities")
+        .select("name")
+        .eq("id", activityId)
+        .single();
+
+      const activityName = activity?.name || "Forum";
+
+      const { data: participants, error: participantsError } = await supabase
+        .from("user_activity_skills")
+        .select("user_id")
+        .eq("activity_id", activityId);
+
+      if (participantsError) {
+        console.error("❌ Error fetching forum participants:", participantsError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch forum participants" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const rawRecipientIds = (participants || [])
+        .map((p: { user_id: string }) => p.user_id)
+        .filter((id: string) => id !== senderId);
+      recipientUserIds = Array.from(new Set(rawRecipientIds));
+
+      if (recipientUserIds.length === 0) {
+        console.warn("⚠️ No forum recipients found");
+        return new Response(
+          JSON.stringify({ message: "No forum recipients found", sent: 0 }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      title = `Forum: ${activityName}`;
+      body = `${senderName}\n${messageText.length > 100 ? messageText.substring(0, 100) + "..." : messageText}`;
+      data = {
+        type: "forum_message",
+        activityId,
+        senderId,
+        messageId: messageRecord.id,
+        activityName,
+      };
+
+      console.log(`✅ Forum message processed: activity=${activityName}, recipients=${recipientUserIds.length}`);
     } else {
       // This is a direct API call (for testing)
       console.log("📞 Processing direct API call");
@@ -101,13 +172,16 @@ serve(async (req) => {
       }
     }
     
-    console.log("✅ Request validated, looking up push tokens for user:", recipientUserId);
+    console.log("✅ Request validated, looking up push tokens");
 
     // Get recipient's push tokens
-    const { data: pushTokens, error: tokensError } = await supabase
+    const pushTokenQuery = supabase
       .from("push_tokens")
-      .select("expo_push_token")
-      .eq("user_id", recipientUserId);
+      .select("expo_push_token, user_id");
+
+    const { data: pushTokens, error: tokensError } = recipientUserIds.length > 0
+      ? await pushTokenQuery.in("user_id", recipientUserIds)
+      : await pushTokenQuery.eq("user_id", recipientUserId);
 
     if (tokensError) {
       console.error("Error fetching push tokens:", tokensError);
@@ -121,12 +195,16 @@ serve(async (req) => {
     }
 
     if (!pushTokens || pushTokens.length === 0) {
-      console.warn(`⚠️ No push tokens found for user ${recipientUserId}`);
+      const targetLabel = recipientUserIds.length > 0
+        ? `${recipientUserIds.length} users`
+        : `user ${recipientUserId}`;
+      console.warn(`⚠️ No push tokens found for ${targetLabel}`);
       return new Response(
         JSON.stringify({ 
-          message: "No push tokens found for user", 
+          message: "No push tokens found for user(s)", 
           sent: 0,
-          userId: recipientUserId 
+          userId: recipientUserId,
+          userIds: recipientUserIds,
         }),
         {
           status: 200,
@@ -135,7 +213,7 @@ serve(async (req) => {
       );
     }
     
-    console.log(`✅ Found ${pushTokens.length} push token(s) for user ${recipientUserId}`);
+    console.log(`✅ Found ${pushTokens.length} push token(s) for notification`);
 
     // Prepare notifications for all tokens (user might have multiple devices)
     const notifications: PushNotificationPayload[] = pushTokens.map((token) => ({
@@ -146,36 +224,39 @@ serve(async (req) => {
       data: data || {},
     }));
 
-    // Send to Expo Push Notification API
+    // Send to Expo Push Notification API in batches
     console.log(`📤 Sending ${notifications.length} notification(s) to Expo API...`);
-    const response = await fetch(EXPO_PUSH_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify(notifications),
-    });
+    let successCount = 0;
+    for (const batch of chunkNotifications(notifications, EXPO_PUSH_BATCH_SIZE)) {
+      const response = await fetch(EXPO_PUSH_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Accept-Encoding": "gzip, deflate",
+        },
+        body: JSON.stringify(batch),
+      });
 
-    const result = await response.json();
-    console.log("📥 Expo API response:", JSON.stringify(result, null, 2));
+      const result = await response.json();
+      console.log("📥 Expo API response:", JSON.stringify(result, null, 2));
 
-    if (!response.ok) {
-      console.error("Expo API error:", result);
-      return new Response(
-        JSON.stringify({ error: "Failed to send push notification", details: result }),
-        {
-          status: response.status,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+      if (!response.ok) {
+        console.error("Expo API error:", result);
+        return new Response(
+          JSON.stringify({ error: "Failed to send push notification", details: result }),
+          {
+            status: response.status,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+
+      const batchSuccess = Array.isArray(result.data)
+        ? result.data.filter((r: any) => r.status === "ok").length
+        : 0;
+      successCount += batchSuccess;
     }
-
-    // Expo returns an array of results, one per notification
-    const successCount = Array.isArray(result.data)
-      ? result.data.filter((r: any) => r.status === "ok").length
-      : 0;
 
     return new Response(
       JSON.stringify({
@@ -203,4 +284,3 @@ serve(async (req) => {
     );
   }
 });
-

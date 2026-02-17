@@ -181,6 +181,7 @@ export default function ProfileScreen() {
     );
   };
 
+
   const handleSkillLevelChange = (activity: string) => {
     const activityObj = activities.find(a => a.name === activity);
     if (!activityObj) return;
@@ -1066,6 +1067,7 @@ For support: activityhubsercive@gmail.com`,
             <Ionicons name="log-out" size={20} color="#F44336" />
             <Text style={[styles.settingText, { color: '#F44336' }]}>Logout</Text>
           </TouchableOpacity>
+
         </View>
       </ScrollView>
     </SafeAreaView>

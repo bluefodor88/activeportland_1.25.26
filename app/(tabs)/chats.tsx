@@ -13,22 +13,19 @@ import { router, useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useChats } from '@/hooks/useChats';
-import { useMeetingReminder } from '@/contexts/MeetingReminderContext';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import { ICONS } from '@/lib/helperUtils';
 export default function ChatsScreen() {
   const { user } = useAuth();
   const { chats, loading, refetch } = useChats();
-  const { checkUpcomingMeetings } = useMeetingReminder();
   const [refreshing, setRefreshing] = useState(false);
 
   // Refetches data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      checkUpcomingMeetings();
       refetch();
-    }, [refetch, checkUpcomingMeetings])
+    }, [refetch])
   );
 
   // Handle pull-to-refresh

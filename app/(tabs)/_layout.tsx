@@ -1,7 +1,6 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityProvider } from '@/contexts/ActivityContext';
-import { MeetingReminderProvider } from '@/contexts/MeetingReminderContext';
 import { useChats } from '@/hooks/useChats';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
@@ -153,7 +152,6 @@ export default function TabLayout() {
 
   return (
     <ActivityProvider>
-      <MeetingReminderProvider>
         <Tabs
           screenOptions={{
             headerShown: false,
@@ -227,7 +225,6 @@ export default function TabLayout() {
             }}
           />
         </Tabs>
-      </MeetingReminderProvider>
     </ActivityProvider>
   );
 }

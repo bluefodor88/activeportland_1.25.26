@@ -31,7 +31,6 @@ import { ParticipantSelector } from '@/components/ParticipantSelector';
 import { useActivities } from '@/hooks/useActivities';
 import { ICONS } from '@/lib/helperUtils';
 import { useEventParticipants } from '@/hooks/useEventParticipants';
-import { scheduleEventNotification } from '@/hooks/useNotifications';
 import * as ImagePicker from 'expo-image-picker'
 import * as Location from 'expo-location';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -420,6 +419,7 @@ export default function ChatScreen() {
           location: eventLocation.trim(),
           event_date: selectedDate,
           event_time: selectedTime,
+          event_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
           status: 'pending',
         })
         .select('id')
@@ -537,21 +537,6 @@ export default function ChatScreen() {
     }
 
     try {
-      // Get meeting details before updating (needed for scheduling notification)
-      let meetingData: any = null;
-      if (status === 'accepted') {
-        const { data } = await supabase
-          .from('meetup_invites')
-          .select(`
-            *,
-            sender:profiles!meetup_invites_sender_id_fkey(name),
-            recipient:profiles!meetup_invites_recipient_id_fkey(name)
-          `)
-          .eq('id', inviteId)
-          .single();
-        meetingData = data;
-      }
-
       const { error } = await supabase
         .from('meetup_invites')
         .update({ status, responded_at: new Date().toISOString() })
@@ -568,21 +553,6 @@ export default function ChatScreen() {
       fetchPendingInvites(); // Refresh invites
       if (status === 'accepted') {
         fetchAcceptedMeetings(); // Refresh accepted meetings
-        
-        // Schedule notification 1 hour before the event
-        if (meetingData && user) {
-          const otherPersonName = meetingData.sender_id === user.id 
-            ? meetingData.recipient?.name 
-            : meetingData.sender?.name;
-          
-          await scheduleEventNotification(
-            meetingData.id,
-            meetingData.event_date,
-            meetingData.event_time,
-            meetingData.location,
-            otherPersonName || name
-          );
-        }
       }
     } catch (error) {
       console.error('Error responding to invite:', error);

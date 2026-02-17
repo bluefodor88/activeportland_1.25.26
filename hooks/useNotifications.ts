@@ -65,6 +65,8 @@ export function useNotifications() {
             name: data.userName || 'User' 
           },
         });
+      } else if (data?.type === 'forum_message') {
+        router.push('/(tabs)/forum');
       } else if (data?.type === 'event_reminder' && data?.meetingId) {
         // For event reminders, we need to find the chat associated with this meeting
         // The meeting data should include the other person's user ID
@@ -328,4 +330,3 @@ export async function cancelScheduledNotification(notificationId: string): Promi
 export async function getAllScheduledNotifications() {
   return await Notifications.getAllScheduledNotificationsAsync();
 }
-

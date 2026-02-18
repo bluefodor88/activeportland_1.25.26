@@ -3,6 +3,7 @@ export interface Profile {
   name: string
   email: string
   avatar_url?: string
+  forum_notifications_enabled?: boolean
   created_at?: string
   updated_at?: string
 }

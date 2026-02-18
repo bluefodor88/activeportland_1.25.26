@@ -8,8 +8,6 @@ import {
   StyleSheet,
   Image,
   RefreshControl,
-  Alert,
-  Linking,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,7 +21,6 @@ import { requireAuth } from '@/lib/authHelpers';
 import { ActivityCarousel } from '@/components/ActivityCarousel';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ICONS } from '@/lib/helperUtils';
-import { supabase } from '@/lib/supabase';
 
 
 export default function PeopleScreen() {
@@ -104,87 +101,6 @@ export default function PeopleScreen() {
     }
   };
 
-  const handleReportUser = (userId: string, userName: string) => {
-    // Require login for reporting
-    if (!user) {
-      requireAuth('report users');
-      return;
-    }
-
-    Alert.alert(
-      'Report User',
-      `Report ${userName} for inappropriate behavior?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Report',
-          style: 'destructive',
-          onPress: () => {
-            // Open email with pre-filled subject
-            const email = 'activityhubsercive@gmail.com';
-            const subject = encodeURIComponent(`Report User - ${userId}`);
-            const body = encodeURIComponent(`I would like to report user ${userName} (ID: ${userId}) for the following reason:\n\n`);
-            const mailtoLink = `mailto:${email}?subject=${subject}&body=${body}`;
-            
-            Linking.canOpenURL(mailtoLink).then(supported => {
-              if (supported) {
-                Linking.openURL(mailtoLink);
-              } else {
-                Alert.alert('Error', 'Please email activityhubsercive@gmail.com with subject: "Report User - ' + userId + '"');
-              }
-            });
-          }
-        }
-      ]
-    );
-  };
-
-  const handleBlockUser = async (userId: string, userName: string) => {
-    // Require login for blocking
-    if (!user) {
-      requireAuth('block users');
-      return;
-    }
-
-    Alert.alert(
-      'Block User',
-      `Block ${userName}? This will:\n• Hide all chats with this user\n• Disable messaging\n• Remove them from your people list`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Block',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Create a blocked_users record (or update if exists)
-              const { error } = await supabase
-                .from('blocked_users')
-                .upsert({
-                  user_id: user.id,
-                  blocked_user_id: userId,
-                  created_at: new Date().toISOString(),
-                }, {
-                  onConflict: 'user_id,blocked_user_id'
-                });
-
-              if (error) {
-                console.error('Error blocking user:', error);
-                Alert.alert('Error', 'Failed to block user. Please try again.');
-              } else {
-                Alert.alert('User Blocked', `${userName} has been blocked.`);
-                // Refresh the people list to remove blocked user
-                refetch();
-              }
-            } catch (error) {
-              console.error('Error blocking user:', error);
-              Alert.alert('Error', 'Failed to block user. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
   const renderUser = ({ item }: { item: any }) => (
     <TouchableOpacity
       style={styles.userCard}
@@ -200,20 +116,6 @@ export default function PeopleScreen() {
       <View style={styles.userInfo}>
         <View style={styles.userNameRow}>
           <Text style={styles.userName}>{item.name}</Text>
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={styles.reportButton}
-              onPress={() => handleReportUser(item.id, item.name)}
-            >
-              <Ionicons name="flag-outline" size={16} color="#666" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.blockButton}
-              onPress={() => handleBlockUser(item.id, item.name)}
-            >
-              <Ionicons name="ban-outline" size={16} color="#F44336" />
-            </TouchableOpacity>
-          </View>
         </View>
         <View style={styles.skillContainer}>
           <View style={[styles.skillBadge, { backgroundColor: getSkillColor(item.skill_level) }]}>
@@ -452,17 +354,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#333',
     flex: 1,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  reportButton: {
-    padding: 4,
-  },
-  blockButton: {
-    padding: 4,
   },
   skillContainer: {
     flexDirection: 'row',

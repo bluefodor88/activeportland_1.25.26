@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '@/lib/supabase';
 import { ICONS } from '@/lib/helperUtils';
 import { useAvailability } from '@/hooks/useAvailability';
@@ -39,6 +40,8 @@ export default function PersonDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any | null>(null);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [invites, setInvites] = useState<any[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
   const { availability, loading: availabilityLoading, DAYS_OF_WEEK, TIME_BLOCKS } = useAvailability(id);
   const { user } = useAuth();
   const [safetyAction, setSafetyAction] = useState<'report' | 'block' | null>(null);
@@ -95,6 +98,52 @@ export default function PersonDetailsScreen() {
               .sort((a, b) => a.name.localeCompare(b.name));
 
           setActivities(mapped);
+        }
+
+        if (user?.id) {
+          const now = new Date();
+          const cutoff = new Date(now);
+          cutoff.setDate(cutoff.getDate() - 7);
+          const cutoffDate = cutoff.toISOString().split('T')[0];
+          setInvitesLoading(true);
+          await supabase
+            .from('meetup_invites')
+            .delete()
+            .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+            .lt('event_date', cutoffDate);
+
+          const { data: inviteData, error: inviteError } = await supabase
+            .from('meetup_invites')
+            .select(`
+              id,
+              status,
+              event_date,
+              event_time,
+              location,
+              created_at,
+              activity_name,
+              sender_id,
+              recipient_id,
+              sender:profiles!meetup_invites_sender_id_fkey(id, name, avatar_url),
+              recipient:profiles!meetup_invites_recipient_id_fkey(id, name, avatar_url)
+            `)
+            .or(
+              `and(sender_id.eq.${user.id},recipient_id.eq.${id}),and(sender_id.eq.${id},recipient_id.eq.${user.id})`
+            )
+            .order('created_at', { ascending: false });
+
+          if (inviteError) {
+            console.error('Error fetching invites for profile:', inviteError);
+            setInvites([]);
+          } else {
+            const filtered = (inviteData || []).filter((invite: any) => {
+              if (!invite.event_date) return true;
+              const eventTime = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+              return eventTime >= cutoff.getTime();
+            });
+            setInvites(filtered);
+          }
+          setInvitesLoading(false);
         }
       } catch (error) {
         console.error('Unexpected error fetching person details:', error);
@@ -168,6 +217,38 @@ export default function PersonDetailsScreen() {
     }
   };
 
+  const handleInviteResponse = async (inviteId: string, status: 'accepted' | 'declined') => {
+    if (!inviteId?.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('meetup_invites')
+        .update({ status, responded_at: new Date().toISOString() })
+        .eq('id', inviteId);
+
+      if (error) {
+        Alert.alert('Error', 'Failed to update invite.');
+        return;
+      }
+
+      setInvites((prev) =>
+        prev.map((invite) => (invite.id === inviteId ? { ...invite, status } : invite))
+      );
+    } catch (error) {
+      console.error('Error responding to invite:', error);
+      Alert.alert('Error', 'Failed to update invite.');
+    }
+  };
+
+  const getInviteStatusStyle = (status: string) => {
+    if (status === 'accepted') {
+      return { badge: { backgroundColor: '#E7F6EA' }, text: { color: '#2E7D32' } };
+    }
+    if (status === 'declined') {
+      return { badge: { backgroundColor: '#FFE8E8' }, text: { color: '#C0392B' } };
+    }
+    return { badge: { backgroundColor: '#FFF3D6' }, text: { color: '#B26A00' } };
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
@@ -225,63 +306,43 @@ export default function PersonDetailsScreen() {
 
           <View style={[styles.section, styles.sectionGap]}>
             <Text style={styles.sectionTitle}>Availability</Text>
+            <LinearGradient
+              colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.sectionDivider}
+            />
             {availabilityLoading ? (
               <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 16 }} />
             ) : (
               <View style={styles.availabilityContainer}>
                 {DAYS_OF_WEEK.map((dayName, dayIndex) => {
                   const daySlots = availability.filter(
-                    (slot) => slot.day_of_week === dayIndex
+                    (slot) => slot.day_of_week === dayIndex && slot.enabled
                   );
-                  const hasAnyEnabled = daySlots.some((slot) => slot.enabled);
-                  
-                  if (!hasAnyEnabled) return null; // Skip days with no availability
-                  
+                  if (daySlots.length === 0) return null;
+                  const timeLabels = daySlots
+                    .map((slot) => slot.time_block)
+                    .filter(Boolean)
+                    .sort((a, b) => TIME_BLOCKS.indexOf(a) - TIME_BLOCKS.indexOf(b))
+                    .map((timeBlock) => timeBlock.toUpperCase());
+
                   return (
-                    <View key={dayIndex} style={styles.availabilityDayRow}>
-                      <Text style={styles.availabilityDayLabel}>
-                        {dayName.substring(0, 3)}
-                      </Text>
-                      <View style={styles.availabilityTimeBlocks}>
-                        {TIME_BLOCKS.map((timeBlock) => {
-                          const slot = daySlots.find(
-                            (s) => s.time_block === timeBlock
-                          );
-                          const isEnabled = slot?.enabled || false;
-                          const timeBlockLabel = timeBlock.charAt(0).toUpperCase() + timeBlock.slice(1);
-                          return (
-                            <View
-                              key={timeBlock}
-                              style={[
-                                styles.availabilityBlock,
-                                isEnabled && styles.availabilityBlockEnabled,
-                              ]}
-                            >
-                              <Ionicons
-                                name="checkmark"
-                                size={16}
-                                color={isEnabled ? 'white' : '#999'}
-                                style={styles.availabilityCheckmark}
-                              />
-                              <Text
-                                style={[
-                                  styles.availabilityBlockText,
-                                  isEnabled && styles.availabilityBlockTextEnabled,
-                                ]}
-                              >
-                                {timeBlockLabel}
-                              </Text>
-                            </View>
-                          );
-                        })}
+                    <View key={dayIndex} style={styles.availabilityLine}>
+                      <Text style={styles.availabilityLineDay}>{dayName}:</Text>
+                      <View style={styles.availabilityChips}>
+                        {timeLabels.map((label) => (
+                          <View key={`${dayIndex}-${label}`} style={styles.availabilityChip}>
+                            <Text style={styles.availabilityChipText}>{label}</Text>
+                          </View>
+                        ))}
                       </View>
                     </View>
                   );
                 })}
                 {availability.filter((slot) => slot.enabled).length === 0 && (
-                  <Text style={styles.emptyText}>
-                    No availability preferences set.
-                  </Text>
+                  <Text style={styles.emptyText}>No availability preferences set.</Text>
                 )}
               </View>
             )}
@@ -289,6 +350,13 @@ export default function PersonDetailsScreen() {
 
           <View style={[styles.section, styles.sectionGap]}>
             <Text style={styles.sectionTitle}>Activities</Text>
+            <LinearGradient
+              colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.sectionDivider}
+            />
             {activities.length === 0 ? (
               <Text style={styles.emptyText}>
                 No activities selected yet.
@@ -324,6 +392,134 @@ export default function PersonDetailsScreen() {
                   </View>
                 </View>
               ))
+            )}
+          </View>
+
+          <View style={[styles.section, styles.sectionGap]}>
+            <Text style={styles.sectionTitle}>Invites</Text>
+            <LinearGradient
+              colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.sectionDivider}
+            />
+            {invitesLoading ? (
+              <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 12 }} />
+            ) : invites.length === 0 ? (
+              <Text style={styles.emptyText}>No invites yet.</Text>
+            ) : (
+              (() => {
+                const now = Date.now();
+                const sorted = invites
+                  .slice()
+                  .sort((a, b) => {
+                    const aDate = a.event_date ? new Date(`${a.event_date}T${a.event_time || '00:00'}`).getTime() : Infinity;
+                    const bDate = b.event_date ? new Date(`${b.event_date}T${b.event_time || '00:00'}`).getTime() : Infinity;
+                    return aDate - bDate;
+                  });
+                const upcoming = sorted.filter((invite) => {
+                  if (!invite.event_date) return true;
+                  const time = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+                  return time >= now;
+                });
+                const past = sorted.filter((invite) => {
+                  if (!invite.event_date) return false;
+                  const time = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+                  return time < now;
+                });
+
+                const renderInviteCard = (invite: any) => {
+                  const isSender = invite.sender_id === user?.id;
+                  const isRecipient = invite.recipient_id === user?.id;
+                  const status = (invite.status || 'pending').toLowerCase();
+                  const statusStyle = getInviteStatusStyle(status);
+                const otherName = isSender ? invite.recipient?.name : invite.sender?.name;
+                const title = otherName || 'Member';
+                const dateLabel = invite.event_date
+                  ? new Date(invite.event_date).toLocaleDateString('en-US', {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                    })
+                  : 'Date TBD';
+                const timeLabel = invite.event_time
+                  ? new Date(`2000-01-01T${invite.event_time}`).toLocaleTimeString('en-US', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                    })
+                  : 'Time TBD';
+                const activityLabel = invite.activity_name || 'Activity TBD';
+
+                return (
+                  <View key={invite.id} style={styles.inviteCard}>
+                    <View style={styles.inviteHeaderRow}>
+                      <Text style={styles.inviteTitle}>{title}</Text>
+                      <View style={[styles.inviteStatusBadge, statusStyle.badge]}>
+                        <Text style={[styles.inviteStatusText, statusStyle.text]}>
+                          {status === 'pending' ? 'Pending' : status === 'accepted' ? 'Accepted' : 'Declined'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.inviteMeta}>🏷️ {activityLabel}</Text>
+                    <Text style={styles.inviteMeta}>📅 {dateLabel} • {timeLabel}</Text>
+
+                    {status === 'pending' && isRecipient && (
+                      <View style={styles.inviteActionsRow}>
+                        <TouchableOpacity
+                          style={styles.inviteAcceptButton}
+                          onPress={() => handleInviteResponse(invite.id, 'accepted')}
+                        >
+                          <Text style={styles.inviteAcceptText}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.inviteDeclineButton}
+                          onPress={() => handleInviteResponse(invite.id, 'declined')}
+                        >
+                          <Text style={styles.inviteDeclineText}>Decline</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    </View>
+                  );
+                };
+
+                return (
+                  <View>
+                    {upcoming.map(renderInviteCard)}
+                    {past.length > 0 && (
+                      <View style={styles.invitesPastSection}>
+                        <Text style={styles.invitesPastTitle}>Past Events</Text>
+                        <View style={styles.invitesPastPills}>
+                        {past
+                          .slice()
+                          .reverse()
+                          .map((invite: any) => {
+                          const isSender = invite.sender_id === user?.id;
+                          const otherName = isSender ? invite.recipient?.name : invite.sender?.name;
+                          const activityLabel = invite.activity_name || 'Activity TBD';
+                          const dateLabel = invite.event_date
+                            ? new Date(invite.event_date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : 'Date TBD';
+                          return (
+                            <View key={invite.id} style={styles.invitePastRow}>
+                              <Text style={styles.invitePastText}>
+                                {otherName || 'Member'} • {activityLabel} • {dateLabel}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              })()
             )}
           </View>
 
@@ -522,6 +718,98 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 16,
   },
+  inviteCard: {
+    backgroundColor: '#FFFDF9',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F4E5C9',
+    marginTop: 10,
+  },
+  inviteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 6,
+  },
+  inviteTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  inviteStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  inviteStatusText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+  },
+  inviteMeta: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 4,
+  },
+  inviteActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  inviteAcceptButton: {
+    flex: 1,
+    backgroundColor: '#FF8C42',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  inviteAcceptText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
+  },
+  inviteDeclineButton: {
+    flex: 1,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  inviteDeclineText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+  },
+  invitesPastSection: {
+    marginTop: 8,
+  },
+  invitesPastTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#8A8A8A',
+    marginBottom: 6,
+  },
+  invitesPastPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  invitePastRow: {
+    backgroundColor: '#FFF3E8',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#FFE2CC',
+  },
+  invitePastText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#A35B2A',
+  },
   safetyModalActions: {
     flexDirection: 'row',
     gap: 10,
@@ -558,6 +846,11 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#333',
     marginBottom: 12,
+  },
+  sectionDivider: {
+    height: 3,
+    borderRadius: 2,
+    marginBottom: 10,
   },
   emptyText: {
     fontSize: 14,
@@ -616,51 +909,40 @@ const styles = StyleSheet.create({
     color: '#388E3C',
   },
   availabilityContainer: {
-    marginTop: 8,
+    marginTop: 6,
+    gap: 6,
   },
-  availabilityDayRow: {
+  availabilityLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    gap: 6,
   },
-  availabilityDayLabel: {
-    width: 50,
-    fontSize: 14,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#333',
+  availabilityLineDay: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#8A8A8A',
+    textTransform: 'uppercase',
+    width: 90,
   },
-  availabilityTimeBlocks: {
+  availabilityChips: {
     flexDirection: 'row',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 6,
     flex: 1,
   },
-  availabilityBlock: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexDirection: 'row',
+  availabilityChip: {
+    backgroundColor: '#FFF3E8',
+    borderRadius: 999,
+    paddingVertical: 2,
     paddingHorizontal: 8,
-    paddingVertical: 8,
-    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FFE2CC',
   },
-  availabilityBlockEnabled: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
-  },
-  availabilityCheckmark: {
-    marginRight: 2,
-  },
-  availabilityBlockText: {
-    fontSize: 12,
-    fontFamily: 'Inter_600SemiBold',
-    color: '#999',
-  },
-  availabilityBlockTextEnabled: {
-    color: 'white',
+  availabilityChipText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+    color: '#A35B2A',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 });

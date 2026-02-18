@@ -22,6 +22,7 @@ import ImageView from "react-native-image-viewing";
 import { useLocalSearchParams, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useChatMessages } from '@/hooks/useChatMessages';
 import { useAuth } from '@/hooks/useAuth';
 import { getOrCreateChat, useChats } from '@/hooks/useChats';
@@ -54,7 +55,6 @@ export default function ChatScreen() {
   const [eventLocation, setEventLocation] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
-  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [acceptedMeetings, setAcceptedMeetings] = useState<any[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [selectedParticipants, setSelectedParticipants] = useState<Participant[]>([]);
@@ -71,6 +71,8 @@ export default function ChatScreen() {
   const [selectedActivityId, setSelectedActivityId] = useState<string>('');
   const [selectedActivityName, setSelectedActivityName] = useState<string>('');
   const [activitySearch, setActivitySearch] = useState('');
+  const [showCustomActivityInput, setShowCustomActivityInput] = useState(false);
+  const [customActivityName, setCustomActivityName] = useState('');
   const [otherUserAvatar, setOtherUserAvatar] = useState<string | null>(null);
   const [locationMode, setLocationMode] = useState<'manual' | 'gps'>('manual');
 
@@ -82,6 +84,12 @@ export default function ChatScreen() {
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
   const [galleryImages, setGalleryImages] = useState<{ uri: string }[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [chatMeta, setChatMeta] = useState<{
+    participant_1: string;
+    participant_2: string;
+    last_read_p1: string | null;
+    last_read_p2: string | null;
+  } | null>(null);
   
   const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
@@ -223,11 +231,14 @@ export default function ChatScreen() {
 
   const filteredActivities = activities
     .filter(a => a?.name)
-    .filter(a => a.name.toLowerCase().includes(activitySearch.trim().toLowerCase()));
+    .filter(a => a.name.toLowerCase().includes(activitySearch.trim().toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const selectActivity = (activity: { id: string; name: string }) => {
     setSelectedActivityId(activity.id);
     setSelectedActivityName(activity.name);
+    setShowCustomActivityInput(false);
+    setCustomActivityName('');
     setShowActivityPicker(false);
   };
 
@@ -246,16 +257,6 @@ export default function ChatScreen() {
       });
     });
     
-    // Add pending invites
-    pendingInvites.forEach((invite) => {
-      data.push({
-        id: `invite-${invite.id}`,
-        type: 'invite',
-        data: invite,
-        timestamp: new Date(invite.created_at).getTime()
-      });
-    });
-    
     // Add messages
     messages.forEach((message) => {
       data.push({
@@ -268,42 +269,17 @@ export default function ChatScreen() {
     
     // Sort by timestamp
     return data.sort((a, b) => a.timestamp - b.timestamp);
-  }, [acceptedMeetings, pendingInvites, messages]);
+  }, [acceptedMeetings, messages]);
 
   // Render item for FlatList
   const renderItem = ({ item }: { item: any }) => {
     switch (item.type) {
       case 'acceptedMeeting':
         return renderAcceptedMeeting({ item: item.data });
-      case 'invite':
-        return renderInvite({ item: item.data });
       case 'message':
         return renderMessage({ item: item.data });
       default:
         return null;
-    }
-  };
-
-  const fetchPendingInvites = async () => {
-    if (!chatId || !user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('meetup_invites')
-        .select(`
-          *,
-          sender:profiles!meetup_invites_sender_id_fkey(name),
-          recipient:profiles!meetup_invites_recipient_id_fkey(name)
-        `)
-        .eq('chat_id', chatId)
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setPendingInvites(data);
-      }
-    } catch (error) {
-      console.error('Error fetching pending invites:', error);
     }
   };
 
@@ -359,6 +335,22 @@ export default function ChatScreen() {
       setError('Error initializing chat');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChatMeta = async () => {
+    if (!chatId) return;
+    try {
+      const { data, error } = await supabase
+        .from('chats')
+        .select('participant_1, participant_2, last_read_p1, last_read_p2')
+        .eq('id', chatId)
+        .maybeSingle();
+      if (!error && data) {
+        setChatMeta(data);
+      }
+    } catch (error) {
+      console.error('Error fetching chat metadata:', error);
     }
   };
 
@@ -419,6 +411,7 @@ export default function ChatScreen() {
           location: eventLocation.trim(),
           event_date: selectedDate,
           event_time: selectedTime,
+          activity_name: selectedActivityName || null,
           event_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
           status: 'pending',
         })
@@ -466,7 +459,6 @@ export default function ChatScreen() {
       setSelectedActivityName('');
       setSelectedParticipants([]);
       setShowScheduleModal(false);
-      fetchPendingInvites(); // Refresh invites
     } catch (error) {
       console.error('Error creating event:', error);
       Alert.alert('Error', 'Failed to send invite. Please try again.');
@@ -530,36 +522,6 @@ export default function ChatScreen() {
     }
   };
 
-  const handleInviteResponse = async (inviteId: string, status: 'accepted' | 'declined') => {
-    if (!inviteId?.trim()) {
-      Alert.alert('Error', 'Invalid invite ID');
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('meetup_invites')
-        .update({ status, responded_at: new Date().toISOString() })
-        .eq('id', inviteId);
-
-      if (error) {
-        console.error('Error responding to invite:', error);
-        Alert.alert('Error', 'Failed to respond to invite');
-        return;
-      }
-
-      const statusText = status === 'accepted' ? 'accepted' : 'declined';
-      Alert.alert('Success!', `Invite ${statusText} successfully`);
-      fetchPendingInvites(); // Refresh invites
-      if (status === 'accepted') {
-        fetchAcceptedMeetings(); // Refresh accepted meetings
-      }
-    } catch (error) {
-      console.error('Error responding to invite:', error);
-      Alert.alert('Error', 'Failed to respond to invite');
-    }
-  };
-
   const renderHeaderTitle = () => (
     <TouchableOpacity
       style={styles.headerTitleRow}
@@ -613,6 +575,13 @@ export default function ChatScreen() {
   const renderMessage = ({ item }: { item: any }) => {
     const isMe = item.sender_id === user?.id;
     const hasImages = item.image_urls && item.image_urls.length > 0;
+    const otherLastRead =
+      chatMeta && user?.id
+        ? (chatMeta.participant_1 === user.id ? chatMeta.last_read_p2 : chatMeta.last_read_p1)
+        : null;
+    const isRead =
+      !!otherLastRead && new Date(otherLastRead).getTime() >= new Date(item.created_at).getTime();
+    const isDelivered = !!otherLastRead && !isRead;
     
     return (
       <View style={[styles.messageContainer, isMe ? styles.myMessage : styles.otherMessage]}>
@@ -644,58 +613,19 @@ export default function ChatScreen() {
         </Text>
         ) : null}
         
-        <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.otherTimestamp]}>
-          {formatTime(item.created_at)}
-        </Text>
-      </View>
-    );
-  };
-
-  const renderInvite = ({ item }: { item: any }) => {
-    const isMyInvite = item.sender_id === user?.id;
-    const senderName = item.sender?.name || 'Unknown';
-    const recipientName = item.recipient?.name || 'Unknown';
-    
-    return (
-      <View style={styles.inviteContainer}>
-        <View style={styles.inviteHeader}>
-          <Text style={styles.inviteTitle}>
-            {isMyInvite ? `Invite sent to ${recipientName}` : `Invite from ${senderName}`}
+        <View style={[styles.timestampRow, isMe ? styles.myTimestampRow : styles.otherTimestampRow]}>
+          <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.otherTimestamp]}>
+            {formatTime(item.created_at)}
           </Text>
-          <Text style={styles.inviteStatus}>Pending</Text>
+          {isMe && (
+            <Ionicons
+              name={isRead || isDelivered ? 'checkmark-done' : 'checkmark'}
+              size={14}
+              color={isRead ? '#FFE2B5' : '#A0A0A0'}
+              style={styles.tickIcon}
+            />
+          )}
         </View>
-        
-        <View style={styles.inviteDetails}>
-          <Text style={styles.inviteLocation}>📍 {item.location}</Text>
-          <Text style={styles.inviteDateTime}>
-            📅 {new Date(item.event_date).toLocaleDateString('en-US', { 
-              weekday: 'short', 
-              month: 'short', 
-              day: 'numeric' 
-            })} at {new Date(`2000-01-01T${item.event_time}`).toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            })}
-          </Text>
-        </View>
-
-        {!isMyInvite && (
-          <View style={styles.inviteActions}>
-            <TouchableOpacity
-              style={styles.acceptButton}
-              onPress={() => handleInviteResponse(item.id, 'accepted')}
-            >
-              <Text style={styles.acceptText}>Accept</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.declineButton}
-              onPress={() => handleInviteResponse(item.id, 'declined')}
-            >
-              <Text style={styles.declineText}>Decline</Text>
-            </TouchableOpacity>
-          </View>
-        )}
       </View>
     );
   };
@@ -751,6 +681,9 @@ export default function ChatScreen() {
         
         <View style={styles.meetingDetails}>
           <Text style={styles.meetingLocation}>📍 {item.location}</Text>
+          {item.activity_name ? (
+            <Text style={styles.inviteActivity}>🏷️ Activity: {item.activity_name}</Text>
+          ) : null}
           <Text style={styles.meetingDateTime}>
             📅 {new Date(item.event_date).toLocaleDateString('en-US', { 
               weekday: 'short', 
@@ -769,9 +702,6 @@ export default function ChatScreen() {
 
   useEffect(() => {
     initializeChat();
-    if (chatId) {
-      fetchPendingInvites();
-    }
   }, [id, user]);
 
   useEffect(() => {
@@ -806,9 +736,9 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (chatId) {
-      fetchPendingInvites();
       fetchAcceptedMeetings();
       markAsRead(chatId);
+      fetchChatMeta();
     }
   }, [chatId]);
 
@@ -840,6 +770,30 @@ export default function ChatScreen() {
     // Cleanup: When leaving the screen, clear the active chat
     return () => {
       setActiveChat(null);
+    };
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    const channel = supabase
+      .channel(`chat_meta_${chatId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chats', filter: `id=eq.${chatId}` },
+        (payload) => {
+          const next = payload.new as {
+            participant_1: string;
+            participant_2: string;
+            last_read_p1: string | null;
+            last_read_p2: string | null;
+          };
+          setChatMeta(next);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
     };
   }, [chatId]);
 
@@ -927,7 +881,7 @@ export default function ChatScreen() {
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
-        ) : messages.length > 0 || pendingInvites.length > 0 ? (
+        ) : messages.length > 0 || acceptedMeetings.length > 0 ? (
           <FlatList
             ref={flatListRef}
             style={styles.messagesList}
@@ -1012,6 +966,13 @@ export default function ChatScreen() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Let's make a plan?</Text>
             <View style={styles.modalTitleSpacer} />
+            <LinearGradient
+              colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+              locations={[0, 0.5, 1]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.scheduleDivider}
+            />
             
             <ScrollView
               style={styles.modalScrollView}
@@ -1035,9 +996,9 @@ export default function ChatScreen() {
                 </TouchableOpacity>
                 {showActivityPicker && (
                   <View style={styles.activityPicker}>
-                    <View style={styles.searchContainer}>
+                    <View style={styles.searchContainerPill}>
                       <TextInput
-                        style={styles.searchInput}
+                        style={styles.searchInputPill}
                         value={activitySearch}
                         onChangeText={setActivitySearch}
                         placeholder="Search activities"
@@ -1060,6 +1021,50 @@ export default function ChatScreen() {
                         </View>
                       )}
                     </ScrollView>
+                    <View style={styles.customActivityContainer}>
+                      {!showCustomActivityInput ? (
+                        <View style={styles.customActivityRow}>
+                          <View style={styles.customActivityHintRow}>
+                            <Text style={styles.customActivityHint} numberOfLines={1}>
+                              Can't find your activity? Add your custom activity!
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.customActivityButton}
+                            onPress={() => setShowCustomActivityInput(true)}
+                          >
+                            <Ionicons name="sparkles-outline" size={16} color="white" />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={styles.customActivityInputRow}>
+                          <TextInput
+                            style={styles.customActivityInput}
+                            value={customActivityName}
+                            onChangeText={setCustomActivityName}
+                            placeholder="Enter activity name"
+                            placeholderTextColor="#999"
+                          />
+                          <TouchableOpacity
+                            style={styles.customActivityButton}
+                            onPress={() => {
+                              const trimmed = customActivityName.trim();
+                              if (!trimmed) {
+                                Alert.alert('Missing Activity', 'Please enter an activity name.');
+                                return;
+                              }
+                              setSelectedActivityId('');
+                              setSelectedActivityName(trimmed);
+                              setShowActivityPicker(false);
+                              setShowCustomActivityInput(false);
+                              setCustomActivityName('');
+                            }}
+                          >
+                            <Text style={styles.customActivityButtonText}>Use</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
                   </View>
                 )}
               </View>
@@ -1539,12 +1544,26 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
   },
+  timestampRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  myTimestampRow: {
+    justifyContent: 'flex-end',
+  },
+  otherTimestampRow: {
+    justifyContent: 'flex-start',
+  },
   myTimestamp: {
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'right',
   },
   otherTimestamp: {
     color: '#999',
+  },
+  tickIcon: {
+    marginTop: 1,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -1636,6 +1655,11 @@ const styles = StyleSheet.create({
   },
   modalTitleSpacer: {
     height: 12,
+  },
+  scheduleDivider: {
+    height: 3,
+    borderRadius: 2,
+    marginBottom: 16,
   },
   modalSubtitle: {
     fontSize: 14,
@@ -1792,6 +1816,20 @@ const styles = StyleSheet.create({
     borderColor: '#eee',
     padding: 12,
   },
+  searchContainerPill: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  searchInputPill: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#333',
+  },
   activityList: {
     maxHeight: 180,
   },
@@ -1804,6 +1842,59 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_600SemiBold',
     color: '#333',
+  },
+  customActivityContainer: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 10,
+  },
+  customActivityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  customActivityHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  customActivityHint: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    flex: 1,
+  },
+  customActivityInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  customActivityInput: {
+    flex: 1,
+    backgroundColor: '#f9f9f9',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#333',
+  },
+  customActivityButton: {
+    backgroundColor: '#FF8C42',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    alignSelf: 'flex-start',
+  },
+  customActivityButtonText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: 'white',
   },
   datePickerContainer: {
     marginTop: 12,
@@ -2004,6 +2095,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   inviteLocation: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#333',
+    marginBottom: 4,
+  },
+  inviteActivity: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     color: '#333',

@@ -27,6 +27,9 @@ interface ChatState {
 }
 
 let subscription: RealtimeChannel | null = null;
+let fetchInFlight = false;
+let lastFetchAt = 0;
+const FETCH_THROTTLE_MS = 1500;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chats: [],
@@ -40,6 +43,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   fetchChats: async (userId) => {
     if (!userId) return;
+    const now = Date.now();
+    if (fetchInFlight || now - lastFetchAt < FETCH_THROTTLE_MS) {
+      return;
+    }
+    fetchInFlight = true;
+    lastFetchAt = now;
     if (!get().initialized) set({ loading: true });
 
     try {
@@ -55,7 +64,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         .from('chats')
         .select('*')
         .or(`participant_1.eq.${userId},participant_2.eq.${userId}`)
-        .order('last_message_at', { ascending: false });
+        .order('last_message_at', { ascending: false })
+        .limit(50);
 
       if (error || !chatsData) throw error;
 
@@ -65,20 +75,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return !blockedUserIds.has(otherUserId);
       });
 
+      const chatIds = filteredChats.map(c => c.id);
+      const otherUserIds = filteredChats.map(chat =>
+        chat.participant_1 === userId ? chat.participant_2 : chat.participant_1
+      );
+
+      const [{ data: profilesData }, { data: messagesData }] = await Promise.all([
+        supabase.from('profiles').select('id, name, avatar_url').in('id', otherUserIds),
+        supabase
+          .from('chat_messages')
+          .select('chat_id, message, created_at, image_urls')
+          .in('chat_id', chatIds)
+          .order('created_at', { ascending: false })
+      ]);
+
+      const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
+      const lastMessageMap = new Map<string, { message: string | null; created_at: string | null; image_urls: any[] | null }>();
+      (messagesData || []).forEach((msg) => {
+        if (!lastMessageMap.has(msg.chat_id)) {
+          lastMessageMap.set(msg.chat_id, msg);
+        }
+      });
+
       const chatPreviews = await Promise.all(
         filteredChats.map(async (chat) => {
           const otherUserId = chat.participant_1 === userId ? chat.participant_2 : chat.participant_1;
           const myLastRead = chat.participant_1 === userId ? chat.last_read_p1 : chat.last_read_p2;
 
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', otherUserId).single();
-          
-          const { data: lastMsg } = await supabase
-            .from('chat_messages')
-            .select('message, created_at, image_urls')
-            .eq('chat_id', chat.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+          const profile = profileMap.get(otherUserId);
+          const lastMsg = lastMessageMap.get(chat.id);
 
           const { count } = await supabase
             .from('chat_messages')
@@ -106,6 +131,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (e) {
       console.log('Error fetching chats:', e);
       set({ loading: false });
+    } finally {
+      fetchInFlight = false;
     }
   },
 
@@ -177,7 +204,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chats' }, () => {
         get().fetchChats(userId);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn('Realtime chat subscription issue:', status);
+          setTimeout(() => {
+            if (subscription) {
+              supabase.removeChannel(subscription);
+              subscription = null;
+            }
+            get().subscribeToChanges(userId);
+          }, 2000);
+        }
+      });
   },
 
   unsubscribe: () => {

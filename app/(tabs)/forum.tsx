@@ -46,13 +46,50 @@ export default function ForumScreen() {
   const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
-  const [showForumHeader, setShowForumHeader] = useState(true);
+  const [showForumHeader, setShowForumHeader] = useState(false);
   const lastSeenKey = user?.id ? `forum_last_seen_${user.id}` : null;
+  const headerSeenKey = `forum_header_seen_${user?.id || 'guest'}`;
   const [dividerLastSeenAt, setDividerLastSeenAt] = useState<string | null>(null);
 
   useEffect(() => {
-    setShowForumHeader(true);
-  }, [activityId]);
+    if (!activityId) {
+      setShowForumHeader(false);
+      return;
+    }
+
+    const loadHeaderSeen = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(headerSeenKey);
+        const seenMap = stored ? JSON.parse(stored) : {};
+        const hasSeen = !!seenMap?.[activityId];
+        setShowForumHeader(!hasSeen);
+      } catch (error) {
+        console.error('Error loading forum header state:', error);
+        setShowForumHeader(true);
+      }
+    };
+
+    loadHeaderSeen();
+  }, [activityId, headerSeenKey]);
+
+  useEffect(() => {
+    if (!activityId || !showForumHeader) return;
+
+    const markHeaderSeen = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(headerSeenKey);
+        const seenMap = stored ? JSON.parse(stored) : {};
+        if (!seenMap?.[activityId]) {
+          seenMap[activityId] = true;
+          await AsyncStorage.setItem(headerSeenKey, JSON.stringify(seenMap));
+        }
+      } catch (error) {
+        console.error('Error saving forum header state:', error);
+      }
+    };
+
+    markHeaderSeen();
+  }, [activityId, headerSeenKey, showForumHeader]);
 
   useEffect(() => {
     if (!lastSeenKey || !activityId) {

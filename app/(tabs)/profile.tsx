@@ -10,6 +10,8 @@ import {
   Modal,
   ActivityIndicator,
   Animated,
+  Switch,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
@@ -40,6 +42,23 @@ export default function ProfileScreen() {
   const [showAvailabilityInfo, setShowAvailabilityInfo] = useState(false);
   const [showReadyTodayInfo, setShowReadyTodayInfo] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [invites, setInvites] = useState<any[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [settingsScreen, setSettingsScreen] = useState<
+    'main' | 'notifications' | 'privacy' | 'account' | 'about' | 'terms' | 'blocked' | 'test'
+  >('main');
+  const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined' | 'provisional' | 'unknown'>('unknown');
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    body: string;
+    confirmText: string;
+    onConfirm: () => Promise<void> | void;
+    destructive?: boolean;
+  } | null>(null);
+  const [showSystemSettingsPrompt, setShowSystemSettingsPrompt] = useState(false);
   const hasActivities = userSkills.some((userSkill) => userSkill.activities);
 
   // Fetch blocked users
@@ -90,12 +109,106 @@ export default function ProfileScreen() {
     }
   }, [user?.id]);
 
+  const fetchInvites = useCallback(async () => {
+    if (!user?.id) {
+      setInvites([]);
+      return;
+    }
+    const now = new Date();
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 7);
+    const cutoffDate = cutoff.toISOString().split('T')[0];
+    setInvitesLoading(true);
+    try {
+      await supabase
+        .from('meetup_invites')
+        .delete()
+        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+        .lt('event_date', cutoffDate);
+
+      const { data, error } = await supabase
+        .from('meetup_invites')
+        .select(`
+          id,
+          status,
+          event_date,
+          event_time,
+          location,
+          created_at,
+          activity_name,
+          sender_id,
+          recipient_id,
+          sender:profiles!meetup_invites_sender_id_fkey(id, name, avatar_url),
+          recipient:profiles!meetup_invites_recipient_id_fkey(id, name, avatar_url)
+        `)
+        .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching invites:', error);
+        setInvites([]);
+      } else {
+        const filtered = (data || []).filter((invite: any) => {
+          if (!invite.event_date) return true;
+          const eventTime = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+          return eventTime >= cutoff.getTime();
+        });
+        setInvites(filtered);
+      }
+    } catch (error) {
+      console.error('Error fetching invites:', error);
+      setInvites([]);
+    } finally {
+      setInvitesLoading(false);
+    }
+  }, [user?.id]);
+
+  const refreshNotificationStatus = async () => {
+    const { status } = await Notifications.getPermissionsAsync();
+    setNotificationStatus(status ?? 'unknown');
+  };
+
+  const openSettingsScreen = async (
+    screen: 'main' | 'notifications' | 'privacy' | 'account' | 'about' | 'terms' | 'blocked' | 'test'
+  ) => {
+    setSettingsError(null);
+    setSettingsMessage(null);
+    setSettingsScreen(screen);
+    setSettingsModalVisible(true);
+    if (screen === 'notifications' || screen === 'main') {
+      await refreshNotificationStatus();
+    }
+    if (screen === 'blocked') {
+      await fetchBlockedUsers();
+    }
+  };
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && settingsModalVisible) {
+        refreshNotificationStatus();
+      }
+    });
+    return () => subscription.remove();
+  }, [settingsModalVisible]);
+
+  const openConfirm = (config: {
+    title: string;
+    body: string;
+    confirmText: string;
+    onConfirm: () => Promise<void> | void;
+    destructive?: boolean;
+  }) => {
+    setConfirmConfig(config);
+  };
+
   // Refresh profile data when tab comes into focus
   useFocusEffect(
     useCallback(() => {
       refetch();
       fetchBlockedUsers();
-    }, [refetch, fetchBlockedUsers])
+      fetchInvites();
+    }, [refetch, fetchBlockedUsers, fetchInvites])
   );
 
   // Get list of activity IDs user has already selected
@@ -233,6 +346,27 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleInviteResponse = async (inviteId: string, status: 'accepted' | 'declined') => {
+    if (!inviteId?.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('meetup_invites')
+        .update({ status, responded_at: new Date().toISOString() })
+        .eq('id', inviteId);
+
+      if (error) {
+        setSettingsError('Failed to update invite.');
+        return;
+      }
+
+      setSettingsMessage(status === 'accepted' ? 'Invite accepted.' : 'Invite declined.');
+      fetchInvites();
+    } catch (error) {
+      console.error('Error responding to invite:', error);
+      setSettingsError('Failed to update invite.');
+    }
+  };
+
   const getSkillColor = (skillLevel: string) => {
     switch (skillLevel) {
       case 'Beginner':
@@ -246,509 +380,65 @@ export default function ProfileScreen() {
     }
   };
 
+  const getInviteStatusStyle = (status: string) => {
+    if (status === 'accepted') {
+      return { badge: { backgroundColor: '#E7F6EA' }, text: { color: '#2E7D32' } };
+    }
+    if (status === 'declined') {
+      return { badge: { backgroundColor: '#FFE8E8' }, text: { color: '#C0392B' } };
+    }
+    return { badge: { backgroundColor: '#FFF3D6' }, text: { color: '#B26A00' } };
+  };
+
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await signOut();
-            if (error) {
-              Alert.alert('Error', 'Failed to logout. Please try again.');
-            } else {
-              router.replace('/(auth)/login');
-            }
-          }
-        },
-      ]
-    );
+    openConfirm({
+      title: 'Log out?',
+      body: 'You can sign back in any time.',
+      confirmText: 'Log out',
+      destructive: true,
+      onConfirm: async () => {
+        const { error } = await signOut();
+        if (error) {
+          setSettingsError('Failed to log out. Please try again.');
+          return;
+        }
+        router.replace('/(auth)/login');
+      },
+    });
   };
 
   const handleAppSettings = () => {
-    Alert.alert(
-      'App Settings',
-      'Choose a setting to configure',
-      [
-        { 
-          text: 'Notifications', 
-          onPress: () => handleNotificationSettings() 
-        },
-        { 
-          text: 'Privacy & Safety', 
-          onPress: () => handlePrivacySettings() 
-        },
-        { 
-          text: 'Account Settings', 
-          onPress: () => handleAccountSettings() 
-        },
-        { 
-          text: 'About ActivityHub', 
-          onPress: () => handleAboutApp() 
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    openSettingsScreen('main');
   };
 
   const handleNotificationSettings = async () => {
-    // Refresh blocked users list when opening settings
-    await fetchBlockedUsers();
-    
-    // Check current notification permission status
-    const { status } = await Notifications.getPermissionsAsync();
-    const isEnabled = status === 'granted';
-    const statusText = isEnabled ? 'Enabled' : 'Disabled';
-    
-    Alert.alert(
-      'Notification Settings',
-      `Configure your notification preferences\n\nCurrent Status: ${statusText}`,
-      [
-        { 
-          text: 'Meeting Reminders', 
-          onPress: () => {
-            Alert.alert(
-              'Meeting Reminders', 
-              'Get notified 1 hour before scheduled meetups.\n\nStatus: ' + statusText,
-              [
-                { text: 'OK' },
-                ...(isEnabled ? [] : [{
-                  text: 'Enable in Settings',
-                  onPress: () => {
-                    if (Platform.OS === 'ios') {
-                      Linking.openURL('app-settings:');
-                    } else {
-                      Linking.openSettings();
-                    }
-                  }
-                }])
-              ]
-            );
-          }
-        },
-        { 
-          text: 'New Messages', 
-          onPress: () => {
-            Alert.alert(
-              'New Messages', 
-              'Get notified when you receive new chat messages.\n\nStatus: ' + statusText,
-              [
-                { text: 'OK' },
-                ...(isEnabled ? [] : [{
-                  text: 'Enable in Settings',
-                  onPress: () => {
-                    if (Platform.OS === 'ios') {
-                      Linking.openURL('app-settings:');
-                    } else {
-                      Linking.openSettings();
-                    }
-                  }
-                }])
-              ]
-            );
-          }
-        },
-        {
-          text: isEnabled ? 'Disable Notifications' : 'Enable Notifications',
-          onPress: async () => {
-            if (isEnabled) {
-              // Open phone settings to disable
-              Alert.alert(
-                'Disable Notifications',
-                'To disable notifications, please turn them off in your phone settings.',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Open Settings',
-                    onPress: () => {
-                      if (Platform.OS === 'ios') {
-                        Linking.openURL('app-settings:');
-                      } else {
-                        Linking.openSettings();
-                      }
-                    }
-                  }
-                ]
-              );
-            } else {
-              // Request permissions
-              const { status: newStatus } = await Notifications.requestPermissionsAsync();
-              if (newStatus === 'granted') {
-                Alert.alert('✅ Enabled', 'Notifications have been enabled!');
-              } else {
-                Alert.alert(
-                  'Permission Denied',
-                  'To enable notifications, please allow them in your phone settings.',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Open Settings',
-                      onPress: () => {
-                        if (Platform.OS === 'ios') {
-                          Linking.openURL('app-settings:');
-                        } else {
-                          Linking.openSettings();
-                        }
-                      }
-                    }
-                  ]
-                );
-              }
-            }
-          }
-        },
-        { 
-          text: '🔍 Debug Push Token', 
-          onPress: async () => {
-            try {
-              const { status } = await Notifications.getPermissionsAsync();
-              const permissionStatus = status === 'granted' ? '✅ Granted' : `❌ ${status}`;
-              
-              // Try to get push token
-              let tokenInfo = 'Not generated';
-              try {
-                const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
-                                 (Constants as any).manifest?.extra?.eas?.projectId ||
-                                 '08f6f8e6-0c4c-497a-988f-6b6b895984fe';
-                
-                if (status === 'granted') {
-                  const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-                  tokenInfo = tokenData.data.substring(0, 40) + '...';
-                  
-                  // Check if stored in database
-                  if (user) {
-                    const { data: storedTokens } = await supabase
-                      .from('push_tokens')
-                      .select('expo_push_token')
-                      .eq('user_id', user.id);
-                    
-                    const storedInfo = storedTokens && storedTokens.length > 0 
-                      ? `✅ Stored (${storedTokens.length} token(s))` 
-                      : '❌ Not stored in database';
-                    
-                    Alert.alert(
-                      'Push Token Debug Info',
-                      `Permission: ${permissionStatus}\n\nToken: ${tokenInfo}\n\nDatabase: ${storedInfo}\n\nProject ID: ${projectId.substring(0, 20)}...`,
-                      [{ text: 'OK' }]
-                    );
-                  } else {
-                    Alert.alert(
-                      'Push Token Debug Info',
-                      `Permission: ${permissionStatus}\n\nToken: ${tokenInfo}\n\nUser: Not logged in`,
-                      [{ text: 'OK' }]
-                    );
-                  }
-                } else {
-                  Alert.alert(
-                    'Push Token Debug Info',
-                    `Permission: ${permissionStatus}\n\nToken: Cannot generate (permission denied)\n\nPlease enable notifications in Settings.`,
-                    [{ text: 'OK' }]
-                  );
-                }
-              } catch (error: any) {
-                Alert.alert(
-                  'Push Token Debug Info',
-                  `Permission: ${permissionStatus}\n\nToken Error: ${error?.message || 'Unknown error'}\n\nCheck console for details.`,
-                  [{ text: 'OK' }]
-                );
-              }
-            } catch (error: any) {
-              Alert.alert('Error', `Failed to get debug info: ${error?.message}`);
-            }
-          }
-        },
-        { 
-          text: '🧪 Test Notifications', 
-          onPress: () => {
-            Alert.alert(
-              'Test Notifications',
-              'Choose a notification type to test',
-              [
-                {
-                  text: 'Test Message Notification',
-                  onPress: async () => {
-                    try {
-                      await sendLocalNotification(
-                        'New message from Test User',
-                        'This is a test message notification!',
-                        { type: 'new_message', chatId: 'test', otherUserId: 'test', userName: 'Test User' }
-                      );
-                      Alert.alert('✅ Sent', 'Message notification sent!');
-                    } catch (error) {
-                      console.error('Error:', error);
-                      Alert.alert('❌ Error', 'Failed to send notification.');
-                    }
-                  }
-                },
-                {
-                  text: 'Test Event Reminder',
-                  onPress: async () => {
-                    try {
-                      await sendLocalNotification(
-                        '⏰ Event Reminder',
-                        'Your meetup with Test User at Test Location starts in 60 minutes!',
-                        { type: 'event_reminder', meetingId: 'test' }
-                      );
-                      Alert.alert('✅ Sent', 'Event reminder sent!');
-                    } catch (error) {
-                      console.error('Error:', error);
-                      Alert.alert('❌ Error', 'Failed to send notification.');
-                    }
-                  }
-                },
-                {
-                  text: 'Test Basic Notification',
-                  onPress: async () => {
-                    try {
-                      await sendLocalNotification(
-                        'Test Notification',
-                        'This is a basic test notification!',
-                        { type: 'test' }
-                      );
-                      Alert.alert('✅ Sent', 'Basic notification sent!');
-                    } catch (error) {
-                      console.error('Error:', error);
-                      Alert.alert('❌ Error', 'Failed to send notification.');
-                    }
-                  }
-                },
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Back', onPress: () => handleNotificationSettings() },
-              ],
-              { cancelable: true }
-            );
-          }
-        },
-        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
-      ],
-      { cancelable: true }
-    );
+    openSettingsScreen('notifications');
   };
 
   const handleBlockedUsers = async () => {
-    await fetchBlockedUsers();
-    
-    if (blockedUsers.length === 0) {
-      Alert.alert(
-        'Blocked Users',
-        'You have no blocked users.',
-        [
-          { text: 'OK', style: 'default' },
-          { text: 'Back', onPress: () => handlePrivacySettings() },
-        ],
-        { cancelable: true }
-      );
-      return;
-    }
-
-    // Show list of blocked users with option to unblock
-    const userList = blockedUsers.map(u => u.name).join('\n');
-    Alert.alert(
-      'Blocked Users',
-      `You have ${blockedUsers.length} blocked user(s):\n\n${userList}\n\nTap "Manage" to unblock users.`,
-      [
-        {
-          text: 'Manage',
-          onPress: () => {
-            // Show unblock options
-            const unblockOptions = blockedUsers.map(blockedUser => ({
-              text: blockedUser.name,
-              onPress: async () => {
-                Alert.alert(
-                  'Unblock User',
-                  `Unblock ${blockedUser.name}?`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Unblock',
-                      onPress: async () => {
-                        if (!user?.id) return;
-                        try {
-                          const { error } = await supabase
-                            .from('blocked_users')
-                            .delete()
-                            .eq('user_id', user.id)
-                            .eq('blocked_user_id', blockedUser.id);
-
-                          if (error) {
-                            Alert.alert('Error', 'Failed to unblock user.');
-                          } else {
-                            Alert.alert('Success', `${blockedUser.name} has been unblocked.`);
-                            await fetchBlockedUsers();
-                          }
-                        } catch (error) {
-                          Alert.alert('Error', 'Failed to unblock user.');
-                        }
-                      }
-                    }
-                  ]
-                );
-              }
-            }));
-
-            Alert.alert(
-              'Unblock Users',
-              'Select a user to unblock:',
-              [
-                ...unblockOptions,
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Back', onPress: () => handleBlockedUsers() },
-              ],
-              { cancelable: true }
-            );
-          }
-        },
-        { text: 'Back', onPress: () => handlePrivacySettings() },
-      ],
-      { cancelable: true }
-    );
+    openSettingsScreen('blocked');
   };
 
   const handlePrivacySettings = () => {
-    Alert.alert(
-      'Privacy & Safety',
-      'Manage your privacy and safety settings',
-      [
-        { 
-          text: 'Profile Visibility', 
-          onPress: () => Alert.alert(
-            'Profile Visibility',
-            'Control who can see your profile and activity levels.\n\nCurrently: Visible to activity members only',
-            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
-            { cancelable: true }
-          )
-        },
-        { 
-          text: 'Location Sharing', 
-          onPress: () => Alert.alert(
-            'Location Sharing',
-            'Control location sharing for meetups.\n\nCurrently: Approximate location only',
-            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
-            { cancelable: true }
-          )
-        },
-        { 
-          text: `Block Users${blockedUsers.length > 0 ? ` (${blockedUsers.length})` : ''}`, 
-          onPress: handleBlockedUsers
-        },
-        { 
-          text: 'Report Issues', 
-          onPress: () => Alert.alert(
-            'Report Issues',
-            'Report inappropriate behavior or content.\n\nContact: activityhubsercive@gmail.com',
-            [{ text: 'OK', style: 'default' }, { text: 'Back', onPress: () => handlePrivacySettings() }],
-            { cancelable: true }
-          )
-        },
-        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
-      ],
-      { cancelable: true }
-    );
+    openSettingsScreen('privacy');
   };
 
   const handleAccountSettings = () => {
-    Alert.alert(
-      'Account Settings',
-      'Manage your account preferences',
-      [
-        { 
-          text: 'Change Password', 
-          onPress: () => Alert.alert(
-            'Change Password',
-            'Password changes are currently handled through email reset.\n\nWould you like us to send a reset link?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Send Reset Link', onPress: () => Alert.alert('Reset Link Sent', 'Check your email for password reset instructions.', [{ text: 'OK' }]) },
-              { text: 'Back', onPress: () => handleAccountSettings() },
-            ],
-            { cancelable: true }
-          )
-        },
-        { 
-          text: 'Update Email', 
-          onPress: () => Alert.alert(
-            'Update Email',
-            'Email updates require verification.\n\nContact activityhubsercive@gmail.com for assistance.',
-            [{ text: 'OK' }, { text: 'Back', onPress: () => handleAccountSettings() }],
-            { cancelable: true }
-          )
-        },
-        { 
-          text: 'Delete Account', 
-          onPress: () => Alert.alert(
-            'Delete Account',
-            'This will permanently delete your account and all data.\n\nThis action cannot be undone.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete Account',
-                style: 'destructive',
-                onPress: () => Alert.alert(
-                  'Account Deletion',
-                  'Please contact activityhubsercive@gmail.com to delete your account.',
-                  [{ text: 'OK' }]
-                )
-              },
-              { text: 'Back', onPress: () => handleAccountSettings() },
-            ],
-            { cancelable: true }
-          )
-        },
-        { text: 'Back', style: 'cancel', onPress: () => handleAppSettings() },
-      ],
-      { cancelable: true }
-    );
+    openSettingsScreen('account');
   };
 
   const handleTermsAndSafety = () => {
-    Alert.alert(
-      'Terms & Safety Policies',
-      `TERMS OF USE
-
-By using The Activity Hub, you agree to our community guidelines and terms.
-
-ZERO TOLERANCE POLICY
-There is zero tolerance for abusive, harmful, or inappropriate content or behavior. Violations will result in immediate account suspension or termination.
-
-REPORTING & RESPONSE
-Reports of inappropriate behavior will be reviewed within 24 hours and offending content or user access may be removed.
-
-SAFETY GUIDELINES
-• Be respectful and kind to all members
-• Report any inappropriate behavior immediately
-• Meet in public places for first-time meetups
-• Trust your instincts and prioritize your safety
-
-Full Terms: https://bluefodor88.github.io
-Privacy Policy: https://bluefodor88.github.io
-
-For support: activityhubsercive@gmail.com`,
-      [{ text: 'OK' }]
-    );
+    openSettingsScreen('terms');
   };
 
   const handleAboutApp = () => {
-    const buildNumber = Constants.expoConfig?.ios?.buildNumber || Constants.manifest?.ios?.buildNumber || 'Unknown';
-    const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
-    Alert.alert(
-      'About The Activity Hub',
-      `Connect with people who share your interests and activity levels.\n\nVersion: ${version}\nBuild: ${buildNumber}\n\nFor support: activityhubsercive@gmail.com\n\nMade with ❤️ for the active community in Portland`,
-      [
-        { 
-          text: 'Privacy Policy', 
-          onPress: () => Alert.alert('Privacy Policy', 'Your privacy is important to us. We only collect data necessary to connect you with activity partners.\n\nFull policy: https://bluefodor88.github.io') 
-        },
-        { 
-          text: 'Terms of Service', 
-          onPress: () => Alert.alert('Terms of Service', 'By using The Activity Hub, you agree to our community guidelines and terms.\n\nFull terms: https://bluefodor88.github.io') 
-        },
-        { text: 'Back', onPress: () => handleAppSettings() },
-      ]
-    );
+    openSettingsScreen('about');
   };
+
+  const notificationsEnabled = notificationStatus === 'granted';
+  const forumNotificationsEnabled = profile?.forum_notifications_enabled !== false;
+  const buildNumber = Constants.expoConfig?.ios?.buildNumber || Constants.manifest?.ios?.buildNumber || 'Unknown';
+  const version = Constants.expoConfig?.version || Constants.manifest?.version || '1.0.0';
 
   // Require login for profile (account-based feature)
   if (!user) {
@@ -901,14 +591,16 @@ For support: activityhubsercive@gmail.com`,
         />
 
         <View style={styles.section}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleInline}>My Availability</Text>
-            <TouchableOpacity
-              style={styles.sectionInfoButton}
-              onPress={() => setShowAvailabilityInfo(true)}
-            >
-              <Ionicons name="information-circle-outline" size={18} color="#666" />
-            </TouchableOpacity>
+          <View style={styles.sectionHeaderRowLeft}>
+            <View style={styles.sectionTitleInlineRow}>
+              <Text style={styles.sectionTitleInlineCompact}>My Availability</Text>
+              <TouchableOpacity
+                style={styles.sectionInfoButton}
+                onPress={() => setShowAvailabilityInfo(true)}
+              >
+                <Ionicons name="information-circle-outline" size={18} color="#666" />
+              </TouchableOpacity>
+            </View>
           </View>
           <LinearGradient
             colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
@@ -982,6 +674,135 @@ For support: activityhubsercive@gmail.com`,
           )}
         </View>
 
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitleInline}>Invites</Text>
+          </View>
+          <LinearGradient
+            colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
+            locations={[0, 0.5, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.activitiesDivider}
+          />
+          {invitesLoading ? (
+            <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 12 }} />
+          ) : invites.length === 0 ? (
+            <Text style={styles.invitesEmptyText}>No invites yet.</Text>
+          ) : (
+            (() => {
+              const now = Date.now();
+              const sorted = invites
+                .slice()
+                .sort((a, b) => {
+                  const aDate = a.event_date ? new Date(`${a.event_date}T${a.event_time || '00:00'}`).getTime() : Infinity;
+                  const bDate = b.event_date ? new Date(`${b.event_date}T${b.event_time || '00:00'}`).getTime() : Infinity;
+                  return aDate - bDate;
+                });
+              const upcoming = sorted.filter((invite) => {
+                if (!invite.event_date) return true;
+                const time = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+                return time >= now;
+              });
+              const past = sorted.filter((invite) => {
+                if (!invite.event_date) return false;
+                const time = new Date(`${invite.event_date}T${invite.event_time || '00:00'}`).getTime();
+                return time < now;
+              });
+
+              const renderInviteCard = (invite: any) => {
+                const isSender = invite.sender_id === user?.id;
+                const isRecipient = invite.recipient_id === user?.id;
+                const status = (invite.status || 'pending').toLowerCase();
+                const statusStyle = getInviteStatusStyle(status);
+              const otherName = isSender ? invite.recipient?.name : invite.sender?.name;
+              const title = otherName || 'Member';
+              const dateLabel = invite.event_date
+                ? new Date(invite.event_date).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })
+                : 'Date TBD';
+              const timeLabel = invite.event_time
+                ? new Date(`2000-01-01T${invite.event_time}`).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                  })
+                : 'Time TBD';
+              const activityLabel = invite.activity_name || 'Activity TBD';
+
+              return (
+                <View key={invite.id} style={styles.inviteCard}>
+                  <View style={styles.inviteHeaderRow}>
+                    <Text style={styles.inviteTitle}>{title}</Text>
+                    <View style={[styles.inviteStatusBadge, statusStyle.badge]}>
+                      <Text style={[styles.inviteStatusText, statusStyle.text]}>
+                        {status === 'pending' ? 'Pending' : status === 'accepted' ? 'Accepted' : 'Declined'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.inviteMeta}>{activityLabel} • {dateLabel} • {timeLabel}</Text>
+
+                  {status === 'pending' && isRecipient && (
+                    <View style={styles.inviteActionsRow}>
+                      <TouchableOpacity
+                        style={styles.inviteAcceptButton}
+                        onPress={() => handleInviteResponse(invite.id, 'accepted')}
+                      >
+                        <Text style={styles.inviteAcceptText}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.inviteDeclineButton}
+                        onPress={() => handleInviteResponse(invite.id, 'declined')}
+                      >
+                        <Text style={styles.inviteDeclineText}>Decline</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            };
+
+              return (
+                <View>
+                  {upcoming.map(renderInviteCard)}
+                  {past.length > 0 && (
+                    <View style={styles.invitesPastSection}>
+                      <Text style={styles.invitesPastTitle}>Past Events</Text>
+                        <View style={styles.invitesPastPills}>
+                        {past
+                          .slice()
+                          .reverse()
+                          .map((invite: any) => {
+                          const isSender = invite.sender_id === user?.id;
+                          const otherName = isSender ? invite.recipient?.name : invite.sender?.name;
+                          const activityLabel = invite.activity_name || 'Activity TBD';
+                          const dateLabel = invite.event_date
+                            ? new Date(invite.event_date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                month: 'short',
+                                day: 'numeric',
+                              })
+                            : 'Date TBD';
+                          return (
+                            <View key={invite.id} style={styles.invitePastRow}>
+                              <Text style={styles.invitePastText}>
+                                {otherName || 'Member'} • {activityLabel} • {dateLabel}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                        </View>
+                      </View>
+                    )}
+                </View>
+              );
+            })()
+          )}
+        </View>
+
         <Modal
           visible={showAvailabilityInfo}
           transparent
@@ -1044,7 +865,9 @@ For support: activityhubsercive@gmail.com`,
         </Modal>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitleInline}>Settings</Text>
+          </View>
           <LinearGradient
             colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
             locations={[0, 0.5, 1]}
@@ -1052,23 +875,502 @@ For support: activityhubsercive@gmail.com`,
             end={{ x: 1, y: 0 }}
             style={styles.activitiesDivider}
           />
-          
-          <TouchableOpacity style={styles.settingItem} onPress={handleAppSettings}>
-                <Ionicons name="settings" size={20} color="#333" />
-            <Text style={styles.settingText}>App Settings</Text>
+          <TouchableOpacity style={styles.settingRow} onPress={handleNotificationSettings}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="notifications-outline" size={18} color="#FF8C42" />
+            </View>
+            <View style={styles.settingTextBlock}>
+              <Text style={styles.settingTitle}>Notifications</Text>
+              <Text style={styles.settingSubtitle}>Forum, Chat, Meet-up Reminders</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItem} onPress={handleTermsAndSafety}>
-            <Ionicons name="shield-checkmark" size={20} color="#333" />
-            <Text style={styles.settingText}>Terms & Safety Policies</Text>
+          <TouchableOpacity style={styles.settingRow} onPress={handlePrivacySettings}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="shield-checkmark-outline" size={18} color="#FF8C42" />
+            </View>
+            <View style={styles.settingTextBlock}>
+              <Text style={styles.settingTitle}>Privacy & Safety</Text>
+              <Text style={styles.settingSubtitle}>Visibility, Blocked Users, Reports</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItem} onPress={handleLogout}>
-            <Ionicons name="log-out" size={20} color="#F44336" />
-            <Text style={[styles.settingText, { color: '#F44336' }]}>Logout</Text>
+          <TouchableOpacity style={styles.settingRow} onPress={handleAccountSettings}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="person-circle-outline" size={18} color="#FF8C42" />
+            </View>
+            <View style={styles.settingTextBlock}>
+              <Text style={styles.settingTitle}>Account</Text>
+              <Text style={styles.settingSubtitle}>Password, Email, Delete</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
           </TouchableOpacity>
-
+          <TouchableOpacity style={styles.settingRow} onPress={handleAboutApp}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="information-circle-outline" size={18} color="#FF8C42" />
+            </View>
+            <View style={styles.settingTextBlock}>
+              <Text style={styles.settingTitle}>About</Text>
+              <Text style={styles.settingSubtitle}>Version, Support, Terms</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.settingRow} onPress={handleTermsAndSafety}>
+            <View style={styles.settingIconWrap}>
+              <Ionicons name="document-text-outline" size={18} color="#FF8C42" />
+            </View>
+            <View style={styles.settingTextBlock}>
+              <Text style={styles.settingTitle}>Terms & Safety</Text>
+              <Text style={styles.settingSubtitle}>Guidelines & Policies</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#B0B0B0" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={18} color="#D84A4A" />
+            <Text style={styles.logoutButtonText}>Log out</Text>
+          </TouchableOpacity>
         </View>
+
+        <Modal
+          visible={settingsModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSettingsModalVisible(false)}
+        >
+          <BlurView intensity={20} style={styles.settingsOverlay}>
+            <View style={styles.settingsCard}>
+              <View style={styles.settingsHeader}>
+                {settingsScreen !== 'main' ? (
+                  <TouchableOpacity
+                    style={styles.settingsBack}
+                    onPress={() => setSettingsModalVisible(false)}
+                  >
+                    <Ionicons name="chevron-back" size={20} color="#666" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.settingsBackPlaceholder} />
+                )}
+                <Text style={styles.settingsTitle}>
+                  {settingsScreen === 'main' && 'Settings'}
+                  {settingsScreen === 'notifications' && 'Notifications'}
+                  {settingsScreen === 'privacy' && 'Privacy & Safety'}
+                  {settingsScreen === 'account' && 'Account'}
+                  {settingsScreen === 'about' && 'About'}
+                  {settingsScreen === 'terms' && 'Terms & Safety'}
+                  {settingsScreen === 'blocked' && 'Blocked Users'}
+                  {settingsScreen === 'test' && 'Test Notifications'}
+                </Text>
+                <TouchableOpacity
+                  style={styles.settingsClose}
+                  onPress={() => setSettingsModalVisible(false)}
+                >
+                  <Ionicons name="close" size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              {settingsError && (
+                <View style={styles.settingsBannerError}>
+                  <Text style={styles.settingsBannerText}>{settingsError}</Text>
+                </View>
+              )}
+              {settingsMessage && (
+                <View style={styles.settingsBannerSuccess}>
+                  <Text style={styles.settingsBannerText}>{settingsMessage}</Text>
+                </View>
+              )}
+
+              <ScrollView style={styles.settingsContent} showsVerticalScrollIndicator={false}>
+                {settingsScreen === 'main' && (
+                  <View>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('notifications')}>
+                      <Text style={styles.settingsNavTitle}>Notifications</Text>
+                      <Text style={styles.settingsNavSubtitle}>Forum, chat, meetup reminders</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('privacy')}>
+                      <Text style={styles.settingsNavTitle}>Privacy & Safety</Text>
+                      <Text style={styles.settingsNavSubtitle}>Visibility, blocked users, reporting</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('account')}>
+                      <Text style={styles.settingsNavTitle}>Account</Text>
+                      <Text style={styles.settingsNavSubtitle}>Password, email, sign out</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('about')}>
+                      <Text style={styles.settingsNavTitle}>About</Text>
+                      <Text style={styles.settingsNavSubtitle}>Version, terms, support</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('terms')}>
+                      <Text style={styles.settingsNavTitle}>Terms & Safety</Text>
+                      <Text style={styles.settingsNavSubtitle}>Guidelines and policies</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {settingsScreen === 'notifications' && (
+                  <View>
+                    <View style={styles.settingsToggleRow}>
+                      <View style={styles.settingsToggleText}>
+                        <Text style={styles.settingsToggleTitle}>System Notifications</Text>
+                        <Text style={styles.settingsToggleSubtitle}>Enable notifications at the OS level</Text>
+                      </View>
+                      <View style={styles.settingsToggleSwitch}>
+                        <Switch
+                          value={notificationsEnabled}
+                          onValueChange={() => setShowSystemSettingsPrompt(true)}
+                          trackColor={{ false: '#E0E0E0', true: '#FFCF56' }}
+                          thumbColor={notificationsEnabled ? '#FF8C42' : '#F4F4F4'}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.settingsToggleRow}>
+                      <View style={styles.settingsToggleText}>
+                        <Text style={styles.settingsToggleTitle}>Forum Notifications</Text>
+                        <Text style={styles.settingsToggleSubtitle}>Mute all forum alerts</Text>
+                      </View>
+                      <View style={styles.settingsToggleSwitch}>
+                        <Switch
+                          value={forumNotificationsEnabled}
+                          onValueChange={async (nextValue) => {
+                            if (!user) {
+                              setSettingsError('Sign in required to update notifications.');
+                              return;
+                            }
+                            setSettingsError(null);
+                            const { error } = await supabase
+                              .from('profiles')
+                              .update({ forum_notifications_enabled: nextValue })
+                              .eq('id', user.id);
+                            if (error) {
+                              setSettingsError('Failed to update forum notifications.');
+                              return;
+                            }
+                            refetch();
+                            setSettingsMessage(`Forum notifications ${nextValue ? 'enabled' : 'disabled'}.`);
+                          }}
+                          trackColor={{ false: '#E0E0E0', true: '#FFCF56' }}
+                          thumbColor={forumNotificationsEnabled ? '#FF8C42' : '#F4F4F4'}
+                        />
+                      </View>
+                    </View>
+
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={() => openSettingsScreen('test')}>
+                      <Text style={styles.settingsNavTitle}>Test Notifications</Text>
+                      <Text style={styles.settingsNavSubtitle}>Preview how alerts appear</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {settingsScreen === 'test' && (
+                  <View style={styles.settingsButtonGroup}>
+                    <TouchableOpacity
+                      style={[styles.settingsPrimaryButton, styles.settingsPrimaryButtonStack]}
+                      onPress={async () => {
+                        try {
+                          await sendLocalNotification(
+                            'Test User',
+                            'This is a test message notification!',
+                            { type: 'new_message', chatId: 'test', otherUserId: 'test', userName: 'Test User' }
+                          );
+                          setSettingsMessage('Message notification sent.');
+                        } catch (error) {
+                          setSettingsError('Failed to send notification.');
+                        }
+                      }}
+                    >
+                      <Text style={styles.settingsPrimaryText}>Test Message Notification</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.settingsPrimaryButton, styles.settingsPrimaryButtonStack]}
+                      onPress={async () => {
+                        try {
+                          await sendLocalNotification(
+                            'Forum: Pickleball',
+                            'Test User\nThis is a test forum message!',
+                            { type: 'forum_message', activityId: 'test', senderId: 'test', activityName: 'Pickleball' }
+                          );
+                          setSettingsMessage('Forum notification sent.');
+                        } catch (error) {
+                          setSettingsError('Failed to send notification.');
+                        }
+                      }}
+                    >
+                      <Text style={styles.settingsPrimaryText}>Test Forum Notification</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.settingsPrimaryButton, styles.settingsPrimaryButtonStack]}
+                      onPress={async () => {
+                        try {
+                          await sendLocalNotification(
+                            '⏰ Event Reminder',
+                            'Your meetup with Test User at Test Location starts in 5 minutes!',
+                            { type: 'event_reminder', meetingId: 'test' }
+                          );
+                          setSettingsMessage('Event reminder sent.');
+                        } catch (error) {
+                          setSettingsError('Failed to send notification.');
+                        }
+                      }}
+                    >
+                      <Text style={styles.settingsPrimaryText}>Test Event Reminder</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+
+                {settingsScreen === 'privacy' && (
+                  <View>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Profile Visibility</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        Visible to activity members only.
+                      </Text>
+                    </View>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Location Sharing</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        Approximate location is shared for meetups.
+                      </Text>
+                    </View>
+                    <TouchableOpacity style={styles.settingsNavRow} onPress={handleBlockedUsers}>
+                      <Text style={styles.settingsNavTitle}>Blocked Users</Text>
+                      <Text style={styles.settingsNavSubtitle}>
+                        {blockedUsers.length > 0 ? `${blockedUsers.length} blocked` : 'None blocked'}
+                      </Text>
+                    </TouchableOpacity>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Report Issues</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        Contact: activityhubsercive@gmail.com
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.settingsPrimaryButton}
+                        onPress={() => Linking.openURL('mailto:activityhubsercive@gmail.com')}
+                      >
+                        <Text style={styles.settingsPrimaryText}>Email Support</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {settingsScreen === 'blocked' && (
+                  <View>
+                    {blockedUsers.length === 0 ? (
+                      <Text style={styles.settingsEmptyText}>You have no blocked users.</Text>
+                    ) : (
+                      blockedUsers.map((blockedUser: any) => (
+                        <View key={blockedUser.id} style={styles.blockedRow}>
+                          <Image
+                            source={blockedUser.avatar_url ? { uri: blockedUser.avatar_url } : ICONS.profileIcon}
+                            style={styles.blockedAvatar}
+                          />
+                          <Text style={styles.blockedName}>{blockedUser.name}</Text>
+                          <TouchableOpacity
+                            style={styles.blockedButton}
+                            onPress={() =>
+                              openConfirm({
+                                title: 'Unblock user?',
+                                body: `Unblock ${blockedUser.name}?`,
+                                confirmText: 'Unblock',
+                                onConfirm: async () => {
+                                  if (!user?.id) return;
+                                  const { error } = await supabase
+                                    .from('blocked_users')
+                                    .delete()
+                                    .eq('user_id', user.id)
+                                    .eq('blocked_user_id', blockedUser.id);
+                                  if (error) {
+                                    setSettingsError('Failed to unblock user.');
+                                    return;
+                                  }
+                                  await fetchBlockedUsers();
+                                  setSettingsMessage(`${blockedUser.name} unblocked.`);
+                                },
+                              })
+                            }
+                          >
+                            <Text style={styles.blockedButtonText}>Unblock</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))
+                    )}
+                  </View>
+                )}
+
+                {settingsScreen === 'account' && (
+                  <View>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Change Password</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        We’ll email a reset link to your account email.
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.settingsPrimaryButton}
+                        onPress={async () => {
+                          if (!profile?.email) {
+                            setSettingsError('No email on file.');
+                            return;
+                          }
+                          const { error } = await supabase.auth.resetPasswordForEmail(profile.email);
+                          if (error) {
+                            setSettingsError('Failed to send reset link.');
+                            return;
+                          }
+                          setSettingsMessage('Reset link sent. Check your email.');
+                        }}
+                      >
+                        <Text style={styles.settingsPrimaryText}>Send Reset Link</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Update Email</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        Email updates require verification. Contact support.
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.settingsPrimaryButton}
+                        onPress={() => Linking.openURL('mailto:activityhubsercive@gmail.com')}
+                      >
+                        <Text style={styles.settingsPrimaryText}>Email Support</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.settingsInfoCard}>
+                      <Text style={styles.settingsInfoTitle}>Delete Account</Text>
+                      <Text style={styles.settingsInfoBody}>
+                        This will permanently delete your account and data.
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.settingsPrimaryButton, styles.settingsDangerButton]}
+                        onPress={() =>
+                          openConfirm({
+                            title: 'Delete account?',
+                            body: 'This action cannot be undone. Email support to proceed.',
+                            confirmText: 'Email Support',
+                            destructive: true,
+                            onConfirm: () => Linking.openURL('mailto:activityhubsercive@gmail.com'),
+                          })
+                        }
+                      >
+                        <Text style={styles.settingsPrimaryText}>Contact Support</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
+                {settingsScreen === 'about' && (
+                  <View style={styles.settingsInfoCard}>
+                    <Text style={styles.settingsInfoTitle}>The Activity Hub</Text>
+                    <Text style={styles.settingsInfoBody}>
+                      Connect with people who share your interests and activity levels.
+                    </Text>
+                    <Text style={styles.settingsInfoBody}>
+                      Version: {version} • Build: {buildNumber}
+                    </Text>
+                    <Text style={styles.settingsInfoBody}>
+                      Support: activityhubsercive@gmail.com
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.settingsPrimaryButton}
+                      onPress={() => openSettingsScreen('terms')}
+                    >
+                      <Text style={styles.settingsPrimaryText}>View Terms & Safety</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {settingsScreen === 'terms' && (
+                  <View style={styles.settingsInfoCard}>
+                    <Text style={styles.settingsInfoTitle}>Terms & Safety</Text>
+                    <Text style={styles.settingsInfoBody}>
+                      By using The Activity Hub, you agree to our community guidelines and terms.
+                    </Text>
+                    <Text style={styles.settingsInfoBody}>
+                      Zero tolerance for abusive or inappropriate behavior. Violations may result in account suspension.
+                    </Text>
+                    <Text style={styles.settingsInfoBody}>
+                      Meet in public places for first-time meetups and prioritize your safety.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.settingsPrimaryButton}
+                      onPress={() => Linking.openURL('https://bluefodor88.github.io')}
+                    >
+                      <Text style={styles.settingsPrimaryText}>Open Full Policy</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+              {showSystemSettingsPrompt && (
+                <View style={styles.inlinePromptOverlay}>
+                  <View style={styles.inlinePromptCard}>
+                    <Text style={styles.inlinePromptTitle}>Manage Notifications</Text>
+                    <Text style={styles.inlinePromptBody}>
+                      On iOS, notification permissions are managed in Settings. Tap “Go” to open The Activity Hub settings and turn notifications on or off.
+                    </Text>
+                    <View style={styles.inlinePromptActions}>
+                      <TouchableOpacity
+                        style={styles.inlinePromptCancel}
+                        onPress={() => setShowSystemSettingsPrompt(false)}
+                      >
+                        <Text style={styles.inlinePromptCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.inlinePromptGo}
+                        onPress={async () => {
+                          setShowSystemSettingsPrompt(false);
+                          try {
+                            await Linking.openSettings();
+                          } catch {
+                            if (Platform.OS === 'ios') {
+                              Linking.openURL('app-settings:');
+                            }
+                          }
+                        }}
+                      >
+                        <Text style={styles.inlinePromptGoText}>Go</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+          </BlurView>
+        </Modal>
+
+        <Modal
+          visible={!!confirmConfig}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setConfirmConfig(null)}
+        >
+          <BlurView intensity={20} style={styles.settingsOverlay}>
+            <View style={styles.confirmCard}>
+              <Text style={styles.confirmTitle}>{confirmConfig?.title}</Text>
+              <Text style={styles.confirmBody}>{confirmConfig?.body}</Text>
+              <View style={styles.confirmActions}>
+                <TouchableOpacity
+                  style={styles.confirmCancel}
+                  onPress={() => setConfirmConfig(null)}
+                >
+                  <Text style={styles.confirmCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.confirmConfirm,
+                    confirmConfig?.destructive && styles.confirmConfirmDanger,
+                  ]}
+                  onPress={async () => {
+                    const action = confirmConfig;
+                    setConfirmConfig(null);
+                    if (action) {
+                      await action.onConfirm();
+                    }
+                  }}
+                >
+                  <Text style={styles.confirmConfirmText}>{confirmConfig?.confirmText}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </BlurView>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1194,6 +1496,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexShrink: 1,
   },
+  sectionTitleInlineCompact: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 0,
+  },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1201,8 +1509,21 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     gap: 12,
   },
+  sectionHeaderRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginBottom: 16,
+    gap: 8,
+  },
+  sectionTitleInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
   sectionInfoButton: {
-    padding: 4,
+    padding: 0,
   },
   infoOverlay: {
     flex: 1,
@@ -1409,6 +1730,454 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: '#333',
     marginLeft: 12,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1EEE9',
+  },
+  settingIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFF3E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingIconDanger: {
+    backgroundColor: '#FFE9E9',
+  },
+  settingTextBlock: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  settingTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  settingTitleDanger: {
+    color: '#D84A4A',
+  },
+  settingSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#7A7A7A',
+    marginTop: 2,
+  },
+  invitesEmptyText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  inviteCard: {
+    backgroundColor: '#FFFDF9',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#F4E5C9',
+    marginBottom: 10,
+  },
+  inviteHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 6,
+  },
+  inviteTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  inviteStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  inviteStatusText: {
+    fontSize: 10,
+    fontFamily: 'Inter_700Bold',
+  },
+  inviteMeta: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 4,
+  },
+  inviteActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  inviteAcceptButton: {
+    flex: 1,
+    backgroundColor: '#FF8C42',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  inviteAcceptText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
+  },
+  inviteDeclineButton: {
+    flex: 1,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  inviteDeclineText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
+  },
+  invitesPastSection: {
+    marginTop: 8,
+  },
+  invitesPastTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#8A8A8A',
+    marginBottom: 6,
+  },
+  invitesPastPills: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  invitePastRow: {
+    backgroundColor: '#FFF3E8',
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#FFE2CC',
+  },
+  invitePastText: {
+    fontSize: 10,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#A35B2A',
+  },
+  settingsOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  settingsCard: {
+    width: '100%',
+    maxWidth: 420,
+    maxHeight: '85%',
+    backgroundColor: 'white',
+    borderRadius: 18,
+    padding: 16,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  settingsTitle: {
+    fontSize: 17,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  settingsBack: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsBackPlaceholder: {
+    width: 32,
+    height: 32,
+  },
+  settingsClose: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsContent: {
+    marginTop: 6,
+  },
+  settingsBannerError: {
+    backgroundColor: '#FFE8E8',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  settingsBannerSuccess: {
+    backgroundColor: '#E7F6EA',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  settingsBannerText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#333',
+    textAlign: 'center',
+  },
+  settingsNavRow: {
+    backgroundColor: '#FFF7EE',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  settingsNavTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  settingsNavSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+    marginTop: 4,
+  },
+  settingsInfoCard: {
+    backgroundColor: '#FFFDF9',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F4E5C9',
+    marginBottom: 12,
+  },
+  settingsInfoTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 6,
+  },
+  settingsInfoBody: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 4,
+  },
+  settingsPrimaryButton: {
+    backgroundColor: '#FF8C42',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  settingsDangerButton: {
+    backgroundColor: '#E45858',
+  },
+  settingsPrimaryText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
+  },
+  settingsToggleRow: {
+    backgroundColor: '#FFFDF9',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F4E5C9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  settingsToggleText: {
+    flex: 1,
+    marginRight: 10,
+  },
+  settingsToggleSwitch: {
+    paddingRight: 6,
+  },
+  settingsToggleTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+  },
+  settingsToggleSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+    marginTop: 4,
+  },
+  settingsButtonGroup: {},
+  settingsPrimaryButtonStack: {
+    marginBottom: 10,
+  },
+  logoutButton: {
+    marginTop: 12,
+    backgroundColor: '#FFF1F1',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#F6CACA',
+  },
+  logoutButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter_700Bold',
+    color: '#D84A4A',
+  },
+  settingsEmptyText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  blockedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF7EE',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 10,
+  },
+  blockedAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    marginRight: 10,
+  },
+  blockedName: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#333',
+  },
+  blockedButton: {
+    backgroundColor: '#FFE8E0',
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  blockedButtonText: {
+    fontSize: 11,
+    fontFamily: 'Inter_700Bold',
+    color: '#C4462E',
+  },
+  confirmCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 6,
+  },
+  confirmBody: {
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    marginBottom: 16,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  confirmCancel: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#F2F2F2',
+  },
+  confirmCancelText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#555',
+  },
+  confirmConfirm: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#FF8C42',
+  },
+  confirmConfirmDanger: {
+    backgroundColor: '#D84A4A',
+  },
+  confirmConfirmText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
+  },
+  inlinePromptOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  inlinePromptCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 16,
+  },
+  inlinePromptTitle: {
+    fontSize: 15,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  inlinePromptBody: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  inlinePromptActions: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  inlinePromptCancel: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#F2F2F2',
+  },
+  inlinePromptCancelText: {
+    fontSize: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#555',
+  },
+  inlinePromptGo: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    backgroundColor: '#FF8C42',
+  },
+  inlinePromptGoText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
   },
   noActivitiesText: {
     fontSize: 10,

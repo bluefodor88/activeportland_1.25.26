@@ -134,12 +134,36 @@ serve(async (req) => {
       const rawRecipientIds = (participants || [])
         .map((p: { user_id: string }) => p.user_id)
         .filter((id: string) => id !== senderId);
-      recipientUserIds = Array.from(new Set(rawRecipientIds));
+      const uniqueRecipientIds = Array.from(new Set(rawRecipientIds));
 
-      if (recipientUserIds.length === 0) {
+      if (uniqueRecipientIds.length === 0) {
         console.warn("⚠️ No forum recipients found");
         return new Response(
           JSON.stringify({ message: "No forum recipients found", sent: 0 }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const { data: preferenceRows, error: preferenceError } = await supabase
+        .from("profiles")
+        .select("id")
+        .in("id", uniqueRecipientIds)
+        .eq("forum_notifications_enabled", true);
+
+      if (preferenceError) {
+        console.error("❌ Error checking forum notification preferences:", preferenceError);
+        return new Response(
+          JSON.stringify({ error: "Failed to check forum notification preferences" }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      recipientUserIds = (preferenceRows || []).map((row: { id: string }) => row.id);
+
+      if (recipientUserIds.length === 0) {
+        console.warn("⚠️ No forum recipients after preference filter");
+        return new Response(
+          JSON.stringify({ message: "No forum recipients after preference filter", sent: 0 }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         );
       }

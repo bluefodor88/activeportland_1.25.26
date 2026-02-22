@@ -50,6 +50,7 @@ export default function ForumScreen() {
   const lastSeenKey = user?.id ? `forum_last_seen_${user.id}` : null;
   const headerSeenKey = `forum_header_seen_${user?.id || 'guest'}`;
   const [dividerLastSeenAt, setDividerLastSeenAt] = useState<string | null>(null);
+  const hasMarkedSeenRef = useRef(false);
 
   useEffect(() => {
     if (!activityId) {
@@ -114,6 +115,7 @@ export default function ForumScreen() {
   useEffect(() => {
     if (!user || !activityId || loading) return;
     if (!lastSeenKey) return;
+    if (hasMarkedSeenRef.current) return;
 
     const latestMessageAt = messages[0]?.created_at;
     const seenAt = latestMessageAt || new Date().toISOString();
@@ -125,6 +127,7 @@ export default function ForumScreen() {
         lastSeenMap[activityId] = seenAt;
         await AsyncStorage.setItem(lastSeenKey, JSON.stringify(lastSeenMap));
         touchForumLastSeen();
+        hasMarkedSeenRef.current = true;
       } catch (error) {
         console.error('Error saving last seen time:', error);
       }
@@ -132,6 +135,10 @@ export default function ForumScreen() {
 
     updateLastSeen();
   }, [user, activityId, loading, messages, lastSeenKey]);
+
+  useEffect(() => {
+    hasMarkedSeenRef.current = false;
+  }, [activityId]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({

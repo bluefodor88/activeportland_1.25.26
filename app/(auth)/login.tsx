@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { ScrollView } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -20,6 +21,7 @@ const isMediumDevice = width < 414; // iPhone 8 Plus and smaller
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
 
@@ -84,14 +86,23 @@ export default function LoginScreen() {
 
         <View style={styles.inputContainer}>
           <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            placeholderTextColor="#999"
-            secureTextEntry
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              style={styles.passwordInput}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Enter your password"
+              placeholderTextColor="#999"
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword((prev) => !prev)}
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="rgba(102,102,102,0.3)" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -207,6 +218,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     backgroundColor: '#f9f9f9',
     color: '#333',
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    backgroundColor: '#f9f9f9',
+  },
+  passwordInput: {
+    flex: 1,
+    fontFamily: 'Inter_400Regular',
+    padding: 16,
+    fontSize: 16,
+    color: '#333',
+  },
+  passwordToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
   button: {
     backgroundColor: '#FF8C42',

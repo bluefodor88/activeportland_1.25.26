@@ -56,7 +56,7 @@ serve(async () => {
 
       const { data: invite, error: inviteError } = await supabase
         .from("meetup_invites")
-        .select("id, sender_id, recipient_id, location, event_date, event_time, status")
+        .select("id, sender_id, recipient_id, location, event_date, event_time, event_timezone, status, activity_name, chat_id")
         .eq("id", job.invite_id)
         .single();
 
@@ -76,7 +76,15 @@ serve(async () => {
         continue;
       }
 
-      if (job.job_type !== "invite_reminder" && invite.status !== "accepted") {
+      if (job.job_type === "invite_created" && invite.status !== "pending") {
+        await supabase
+          .from("meetup_notification_jobs")
+          .update({ status: "canceled", updated_at: nowIso })
+          .eq("id", jobId);
+        continue;
+      }
+
+      if (job.job_type !== "invite_reminder" && job.job_type !== "invite_created" && invite.status !== "accepted") {
         await supabase
           .from("meetup_notification_jobs")
           .update({ status: "canceled", updated_at: nowIso })
@@ -91,15 +99,52 @@ serve(async () => {
         .single();
 
       const senderName = senderProfile?.name || "someone";
+      const activityName = invite.activity_name || "Activity";
+      const eventDate = invite.event_date;
+      const eventTime = invite.event_time;
+      let dateTimeLabel = "a scheduled time";
+      if (eventDate && eventTime) {
+        try {
+          const eventIso = `${eventDate}T${eventTime}`;
+          const formatter = new Intl.DateTimeFormat("en-US", {
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: invite.event_timezone || "UTC",
+          });
+          dateTimeLabel = formatter.format(new Date(eventIso));
+        } catch {
+          dateTimeLabel = `${eventDate} ${eventTime}`;
+        }
+      }
 
       let title = "";
       let body = "";
       let data: any = {};
 
-      if (job.job_type === "invite_reminder") {
+      if (job.job_type === "invite_created") {
+        title = `${activityName} invite received!`;
+        body = `${senderName} has invited you on ${dateTimeLabel}. Tap to see more.`;
+        data = {
+          type: "invite_created",
+          inviteId: invite.id,
+          senderId: invite.sender_id,
+          senderName,
+          chatId: invite.chat_id,
+        };
+      } else if (job.job_type === "invite_reminder") {
         title = "Quick check!";
         body = `${senderName} waiting to hear from you. ${invite.location} in 3 hours.`;
-        data = { type: "invite_reminder", inviteId: invite.id };
+        data = {
+          type: "invite_reminder",
+          inviteId: invite.id,
+          senderId: invite.sender_id,
+          senderName,
+          chatId: invite.chat_id,
+        };
       } else if (job.job_type === "accepted_reminder_3h") {
         title = "Plan set!";
         body = `${invite.location} in 3 hours. Lets go.`;

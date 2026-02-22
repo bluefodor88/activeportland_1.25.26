@@ -153,7 +153,7 @@ export default function PersonDetailsScreen() {
     };
 
     fetchData();
-  }, [id]);
+  }, [id, user?.id]);
 
   const displayName = profile?.name || name || 'ActivityHub member';
 

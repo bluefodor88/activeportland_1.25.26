@@ -46,7 +46,7 @@ interface Participant {
 }
 
 export default function ChatScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
+  const { id, name, inviteId } = useLocalSearchParams<{ id: string; name: string; inviteId?: string }>();
   const [newMessage, setNewMessage] = useState('');
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +90,9 @@ export default function ChatScreen() {
     last_read_p1: string | null;
     last_read_p2: string | null;
   } | null>(null);
+  const [showPinnedMeeting, setShowPinnedMeeting] = useState(true);
+  const [invitePreview, setInvitePreview] = useState<any | null>(null);
+  const [showInvitePreview, setShowInvitePreview] = useState(false);
   
   const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
@@ -247,16 +250,6 @@ export default function ChatScreen() {
   const combinedData = useMemo(() => {
     const data: any[] = [];
     
-    // Add accepted meetings first
-    acceptedMeetings.forEach((meeting) => {
-      data.push({
-        id: `meeting-${meeting.id}`,
-        type: 'acceptedMeeting',
-        data: meeting,
-        timestamp: new Date(meeting.event_date + 'T' + meeting.event_time).getTime()
-      });
-    });
-    
     // Add messages
     messages.forEach((message) => {
       data.push({
@@ -269,7 +262,17 @@ export default function ChatScreen() {
     
     // Sort by timestamp
     return data.sort((a, b) => a.timestamp - b.timestamp);
-  }, [acceptedMeetings, messages]);
+  }, [messages]);
+
+  const nextAcceptedMeeting = useMemo(() => {
+    if (!acceptedMeetings.length) return null;
+    const sorted = [...acceptedMeetings].sort((a, b) => {
+      const aTime = new Date(`${a.event_date}T${a.event_time}`).getTime();
+      const bTime = new Date(`${b.event_date}T${b.event_time}`).getTime();
+      return aTime - bTime;
+    });
+    return sorted[0];
+  }, [acceptedMeetings]);
 
   // Render item for FlatList
   const renderItem = ({ item }: { item: any }) => {
@@ -393,6 +396,29 @@ export default function ChatScreen() {
     }
   };
 
+  const handleInviteResponse = async (inviteIdValue: string, status: 'accepted' | 'declined') => {
+    if (!inviteIdValue?.trim()) return;
+    try {
+      const { error } = await supabase
+        .from('meetup_invites')
+        .update({ status, responded_at: new Date().toISOString() })
+        .eq('id', inviteIdValue);
+
+      if (error) {
+        Alert.alert('Error', 'Failed to respond to invite');
+        return;
+      }
+
+      if (status === 'accepted') {
+        fetchAcceptedMeetings();
+      }
+      setShowInvitePreview(false);
+    } catch (error) {
+      console.error('Error responding to invite:', error);
+      Alert.alert('Error', 'Failed to respond to invite');
+    }
+  };
+
   const handleScheduleEvent = async () => {
     if (!eventLocation?.trim() || !selectedDate || !selectedTime || !user || !chatId || !id) {
       Alert.alert('Missing Information', 'Please fill in all required fields');
@@ -483,9 +509,19 @@ export default function ChatScreen() {
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
+      let location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+        timeout: 10000,
+        maximumAge: 5000,
       });
+
+      if (!location) {
+        location = await Location.getLastKnownPositionAsync({});
+      }
+
+      if (!location) {
+        throw new Error('Location unavailable');
+      }
 
       const [place] = await Location.reverseGeocodeAsync({
         latitude: location.coords.latitude,
@@ -742,6 +778,41 @@ export default function ChatScreen() {
     }
   }, [chatId]);
 
+  useEffect(() => {
+    const loadInvitePreview = async () => {
+      if (!inviteId || !user) return;
+      try {
+        const { data, error } = await supabase
+          .from('meetup_invites')
+          .select(`
+            id,
+            sender_id,
+            recipient_id,
+            location,
+            event_date,
+            event_time,
+            status,
+            activity_name,
+            sender:profiles!meetup_invites_sender_id_fkey(name),
+            recipient:profiles!meetup_invites_recipient_id_fkey(name)
+          `)
+          .eq('id', inviteId)
+          .maybeSingle();
+
+        if (error || !data) return;
+        if (data.recipient_id !== user.id) return;
+        if (data.status !== 'pending') return;
+
+        setInvitePreview(data);
+        setShowInvitePreview(true);
+      } catch (error) {
+        console.error('Error loading invite preview:', error);
+      }
+    };
+
+    loadInvitePreview();
+  }, [inviteId, user?.id]);
+
   // Update current time every minute for countdown timers
   useEffect(() => {
     const timer = setInterval(() => {
@@ -771,6 +842,10 @@ export default function ChatScreen() {
     return () => {
       setActiveChat(null);
     };
+  }, [chatId]);
+
+  useEffect(() => {
+    setShowPinnedMeeting(true);
   }, [chatId]);
 
   useEffect(() => {
@@ -882,6 +957,87 @@ export default function ChatScreen() {
             </TouchableOpacity>
           </View>
         ) : messages.length > 0 || acceptedMeetings.length > 0 ? (
+          <>
+            {showInvitePreview && invitePreview && (
+              <View style={styles.invitePreviewCard}>
+                <View style={styles.invitePreviewHeader}>
+                  <Text style={styles.invitePreviewTitle}>
+                    Invite from {invitePreview.sender?.name || 'Member'}
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.invitePreviewClose}
+                    onPress={() => setShowInvitePreview(false)}
+                  >
+                    <Ionicons name="close" size={14} color="#999" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.invitePreviewBody}>
+                  {invitePreview.activity_name || 'Activity'} •{' '}
+                  {new Date(invitePreview.event_date).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}{' '}
+                  at{' '}
+                  {new Date(`2000-01-01T${invitePreview.event_time}`).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                  })}
+                </Text>
+                <Text style={styles.invitePreviewMeta}>
+                  {invitePreview.location || 'Location TBD'}
+                </Text>
+                <View style={styles.invitePreviewActions}>
+                  <TouchableOpacity
+                    style={styles.invitePreviewAccept}
+                    onPress={() => handleInviteResponse(invitePreview.id, 'accepted')}
+                  >
+                    <Text style={styles.invitePreviewAcceptText}>Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.invitePreviewDecline}
+                    onPress={() => handleInviteResponse(invitePreview.id, 'declined')}
+                  >
+                    <Text style={styles.invitePreviewDeclineText}>Decline</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            {nextAcceptedMeeting && showPinnedMeeting && (
+              <View style={styles.pinnedMeeting}>
+                <View style={styles.pinnedHeader}>
+                  <View style={styles.pinnedHeaderLeft}>
+                    <Ionicons name="pin" size={14} color="#FF8C42" />
+                    <Text style={styles.pinnedTitle}>Upcoming Meetup</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.pinnedDismiss}
+                    onPress={() => setShowPinnedMeeting(false)}
+                    accessibilityLabel="Dismiss upcoming meetup"
+                  >
+                    <Ionicons name="close" size={14} color="#B0B0B0" />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.pinnedBody}>
+                  {nextAcceptedMeeting.activity_name || 'Activity'} •{' '}
+                  {new Date(nextAcceptedMeeting.event_date).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                  })}{' '}
+                  at{' '}
+                  {new Date(`2000-01-01T${nextAcceptedMeeting.event_time}`).toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true,
+                  })}
+                </Text>
+                <Text style={styles.pinnedMeta}>
+                  {nextAcceptedMeeting.location || 'Location TBD'}
+                </Text>
+              </View>
+            )}
           <FlatList
             ref={flatListRef}
             style={styles.messagesList}
@@ -895,6 +1051,7 @@ export default function ChatScreen() {
             }}
             showsVerticalScrollIndicator={false}
           />
+          </>
         ) : (
           <View style={styles.centerContainer}>
             <Text style={styles.emptyTitle}>Start the conversation</Text>
@@ -1190,7 +1347,15 @@ export default function ChatScreen() {
                         {Platform.OS === 'ios' && (
                           <TouchableOpacity
                             style={styles.datePickerDoneButton}
-                            onPress={() => setShowDatePicker(false)}
+                            onPress={() => {
+                              if (!selectedDateObj) {
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                setSelectedDateObj(today);
+                                setSelectedDate(today.toISOString().split('T')[0]);
+                              }
+                              setShowDatePicker(false);
+                            }}
                           >
                             <Text style={styles.datePickerDoneText}>Done</Text>
                           </TouchableOpacity>
@@ -1564,6 +1729,122 @@ const styles = StyleSheet.create({
   },
   tickIcon: {
     marginTop: 1,
+  },
+  pinnedMeeting: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF7EE',
+    borderWidth: 1,
+    borderColor: '#FFE2CC',
+  },
+  pinnedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  pinnedHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  pinnedDismiss: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinnedTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#FF8C42',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  pinnedBody: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  pinnedMeta: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+  },
+  invitePreviewCard: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFF7EE',
+    borderWidth: 1,
+    borderColor: '#FFE2CC',
+  },
+  invitePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  invitePreviewTitle: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#FF8C42',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  invitePreviewClose: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  invitePreviewBody: {
+    fontSize: 13,
+    fontFamily: 'Inter_700Bold',
+    color: '#333',
+    marginBottom: 2,
+  },
+  invitePreviewMeta: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    color: '#777',
+  },
+  invitePreviewActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  invitePreviewAccept: {
+    flex: 1,
+    backgroundColor: '#FF8C42',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  invitePreviewAcceptText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: 'white',
+  },
+  invitePreviewDecline: {
+    flex: 1,
+    backgroundColor: '#F2F2F2',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  invitePreviewDeclineText: {
+    fontSize: 12,
+    fontFamily: 'Inter_700Bold',
+    color: '#666',
   },
   inputContainer: {
     flexDirection: 'row',

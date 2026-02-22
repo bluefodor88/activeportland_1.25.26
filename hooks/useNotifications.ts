@@ -65,6 +65,15 @@ export function useNotifications() {
             name: data.userName || 'User' 
           },
         });
+      } else if ((data?.type === 'invite_created' || data?.type === 'invite_reminder') && data?.senderId) {
+        router.push({
+          pathname: '/chat/[id]',
+          params: {
+            id: data.senderId,
+            name: data.senderName || 'User',
+            inviteId: data.inviteId,
+          },
+        });
       } else if (data?.type === 'forum_message') {
         router.push('/(tabs)/forum');
       } else if (data?.type === 'event_reminder' && data?.meetingId) {

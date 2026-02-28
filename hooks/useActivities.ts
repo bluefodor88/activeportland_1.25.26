@@ -23,19 +23,21 @@ export function useActivities() {
         // Sort activities by assumed popularity
         const popularityOrder = [
           'Tennis',
-          'Pickleball', 
+          'Pickleball',
           'Rock Climbing',
           'Hiking/Walking',
-          'Running', 
+          'Running',
           'Cycling',
+          'Sailing',
+          'Biking',
           'Yoga',
           'Swimming',
           'Basketball',
           'Soccer',
           'Weightlifting',
-         'Bar Hopping',
-         'Arts and Crafts'
-        ]
+          'Bar Hopping',
+          'Arts and Crafts',
+        ];
         
         const sortedActivities = (data || []).sort((a, b) => {
           const indexA = popularityOrder.indexOf(a.name)

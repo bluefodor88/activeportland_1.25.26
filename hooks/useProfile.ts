@@ -260,7 +260,11 @@ export function useProfile() {
     }
   };
 
-  // Reset all ready_today flags at the end of the day
+  // Reset all ready_today flags at the end of the day (for this user only).
+  // Runs when the user opens the app on a new calendar day: we set lastResetDate in
+  // AsyncStorage and turn off all their ready_today flags. So "end of day" is effectively
+  // "next time you open the app on a new day." For a global reset at midnight for everyone,
+  // use the scheduled job in migration 20260222000001_reset_ready_today_daily.sql (pg_cron).
   const resetReadyTodayIfNewDay = useCallback(async () => {
     if (!user) return;
 
@@ -269,7 +273,8 @@ export function useProfile() {
       const lastResetDate = await AsyncStorage.getItem(`ready_reset_date_${user.id}`);
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
-      // If we've already reset today, don't do it again
+      // Only reset when the calendar day has changed — never within the same day,
+      // so a toggle the user turned on today stays on until the next day.
       if (lastResetDate === today) {
         return;
       }

@@ -59,7 +59,7 @@ export function useNotifications() {
       if (data?.type === 'new_message' && data?.otherUserId) {
         // Navigate to the chat screen
         router.push({
-          pathname: '/chat/[id]',
+          pathname: '/chats/[id]',
           params: { 
             id: data.otherUserId, 
             name: data.userName || 'User' 
@@ -67,7 +67,7 @@ export function useNotifications() {
         });
       } else if ((data?.type === 'invite_created' || data?.type === 'invite_reminder') && data?.senderId) {
         router.push({
-          pathname: '/chat/[id]',
+          pathname: '/chats/[id]',
           params: {
             id: data.senderId,
             name: data.senderName || 'User',

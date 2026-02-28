@@ -2466,7 +2466,7 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     backgroundColor: 'white',
-    // paddingBottom: Platform.OS === 'ios' ? 20 : 0, // specialized padding
+    paddingBottom: 0,
   },
   previewContainer: {
     padding: 10,

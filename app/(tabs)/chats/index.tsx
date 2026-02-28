@@ -37,7 +37,7 @@ export default function ChatsScreen() {
 
   const openChat = (chatId: string, userName: string, otherUserId: string) => {
     router.push({
-      pathname: '/chat/[id]',
+      pathname: '/chats/[id]',
       params: { id: otherUserId, name: userName },
     });
   };

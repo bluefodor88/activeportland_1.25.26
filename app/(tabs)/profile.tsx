@@ -435,6 +435,28 @@ export default function ProfileScreen() {
     openSettingsScreen('about');
   };
 
+  const handleCheckForUpdates = async () => {
+    try {
+      if (Platform.OS === 'ios') {
+        // App Store URL for The Activity Hub (iOS)
+        await Linking.openURL('https://apps.apple.com/us/app/the-activity-hub/id6749449497');
+      } else if (Platform.OS === 'android') {
+        // Prefer Play Store app if available, fall back to web URL
+        const playStoreAppUrl = 'market://details?id=com.campbell3c2.activeportland';
+        const playStoreWebUrl = 'https://play.google.com/store/apps/details?id=com.campbell3c2.activeportland';
+
+        const canOpenAppUrl = await Linking.canOpenURL(playStoreAppUrl);
+        if (canOpenAppUrl) {
+          await Linking.openURL(playStoreAppUrl);
+        } else {
+          await Linking.openURL(playStoreWebUrl);
+        }
+      }
+    } catch (error) {
+      console.error('Error opening store for updates:', error);
+    }
+  };
+
   const notificationsEnabled = notificationStatus === 'granted';
   const forumNotificationsEnabled = profile?.forum_notifications_enabled !== false;
   const buildNumber = Constants.expoConfig?.ios?.buildNumber || Constants.manifest?.ios?.buildNumber || 'Unknown';
@@ -1268,6 +1290,12 @@ export default function ProfileScreen() {
                     <Text style={styles.settingsInfoBody}>
                       Support: activityhubsercive@gmail.com
                     </Text>
+                <TouchableOpacity
+                  style={styles.settingsPrimaryButton}
+                  onPress={handleCheckForUpdates}
+                >
+                  <Text style={styles.settingsPrimaryText}>Check for Updates</Text>
+                </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.settingsPrimaryButton}
                       onPress={() => openSettingsScreen('terms')}

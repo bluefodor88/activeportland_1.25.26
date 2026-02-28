@@ -259,7 +259,7 @@ export default function PersonDetailsScreen() {
           onPress={() => {
             if (from === 'chat' && fromChatUserId) {
               router.push({
-                pathname: '/chat/[id]',
+                pathname: '/chats/[id]',
                 params: { id: fromChatUserId, name: fromChatName || name || '' },
               });
               return;
@@ -317,26 +317,54 @@ export default function PersonDetailsScreen() {
               <ActivityIndicator size="small" color="#FF8C42" style={{ marginTop: 16 }} />
             ) : (
               <View style={styles.availabilityContainer}>
+                <View style={styles.availabilityHeaderRow}>
+                  <Text style={styles.availabilityHeaderSpacer} />
+                  <View style={styles.availabilityTimeBlocks}>
+                    {TIME_BLOCKS.map((timeBlock) => {
+                      const timeBlockLabel = timeBlock.charAt(0).toUpperCase() + timeBlock.slice(1);
+                      return (
+                        <View key={timeBlock} style={styles.availabilityHeaderCell}>
+                          <Text style={styles.availabilityHeaderText}>{timeBlockLabel}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
                 {DAYS_OF_WEEK.map((dayName, dayIndex) => {
                   const daySlots = availability.filter(
-                    (slot) => slot.day_of_week === dayIndex && slot.enabled
+                    (slot) => slot.day_of_week === dayIndex
                   );
-                  if (daySlots.length === 0) return null;
-                  const timeLabels = daySlots
-                    .map((slot) => slot.time_block)
-                    .filter(Boolean)
-                    .sort((a, b) => TIME_BLOCKS.indexOf(a) - TIME_BLOCKS.indexOf(b))
-                    .map((timeBlock) => timeBlock.toUpperCase());
+                  const hasAnyEnabled = daySlots.some((slot) => slot.enabled);
+
+                  if (!hasAnyEnabled) {
+                    // Still render the row but with all X so layout stays consistent
+                  }
 
                   return (
-                    <View key={dayIndex} style={styles.availabilityLine}>
-                      <Text style={styles.availabilityLineDay}>{dayName}:</Text>
-                      <View style={styles.availabilityChips}>
-                        {timeLabels.map((label) => (
-                          <View key={`${dayIndex}-${label}`} style={styles.availabilityChip}>
-                            <Text style={styles.availabilityChipText}>{label}</Text>
-                          </View>
-                        ))}
+                    <View key={dayIndex} style={styles.availabilityDayRow}>
+                      <Text style={styles.availabilityDayLabel}>{dayName}</Text>
+                      <View style={styles.availabilityTimeBlocks}>
+                        {TIME_BLOCKS.map((timeBlock) => {
+                          const slot = daySlots.find((s) => s.time_block === timeBlock);
+                          const isEnabled = slot?.enabled || false;
+                          return (
+                            <View key={timeBlock} style={styles.availabilityCell}>
+                              <View
+                                style={[
+                                  styles.availabilityBlock,
+                                  isEnabled && styles.availabilityBlockEnabled,
+                                ]}
+                              >
+                                <Ionicons
+                                  name={isEnabled ? 'checkmark' : 'close'}
+                                  size={12}
+                                  color={isEnabled ? 'white' : '#B0B0B0'}
+                                  style={styles.availabilityCheckmark}
+                                />
+                              </View>
+                            </View>
+                          );
+                        })}
                       </View>
                     </View>
                   );
@@ -909,40 +937,75 @@ const styles = StyleSheet.create({
     color: '#388E3C',
   },
   availabilityContainer: {
-    marginTop: 6,
-    gap: 6,
+    marginTop: 8,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E6E6E6',
+    borderRadius: 12,
+    padding: 12,
   },
-  availabilityLine: {
+  availabilityHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    marginBottom: 8,
   },
-  availabilityLineDay: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    color: '#8A8A8A',
+  availabilityHeaderSpacer: {
+    width: 52,
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#9CA3AF',
+  },
+  availabilityHeaderCell: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  availabilityHeaderText: {
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#9CA3AF',
     textTransform: 'uppercase',
-    width: 90,
   },
-  availabilityChips: {
+  availabilityDayRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  availabilityDayLabel: {
+    width: 52,
+    fontSize: 8,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#374151',
+    textTransform: 'uppercase',
+  },
+  availabilityTimeBlocks: {
+    flexDirection: 'row',
+    gap: 8,
     flex: 1,
   },
-  availabilityChip: {
-    backgroundColor: '#FFF3E8',
-    borderRadius: 999,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    borderColor: '#FFE2CC',
+  availabilityCell: {
+    flex: 1,
+    alignItems: 'center',
   },
-  availabilityChipText: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    color: '#A35B2A',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+  availabilityBlock: {
+    width: 24,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E3E3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    gap: 0,
+    alignSelf: 'center',
+  },
+  availabilityBlockEnabled: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  availabilityCheckmark: {
+    marginRight: 0,
   },
 });

@@ -4,13 +4,15 @@ import { ActivityProvider } from '@/contexts/ActivityContext';
 import { useChats } from '@/hooks/useChats';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { useActivityStore } from '@/store/useActivityStore';
+import { router } from 'expo-router';
 
 const FORUM_UNREAD_KEY = (userId: string) => `forum_last_seen_${userId}`;
 
@@ -107,6 +109,8 @@ function ForumTabIcon({ size, color }: { size: number; color: string }) {
   );
 }
 
+// Default bar on both platforms: icon on top, label below.
+
 const styles = StyleSheet.create({
   tabIconContainer: {
     position: 'relative',
@@ -146,7 +150,12 @@ const styles = StyleSheet.create({
 
 export default function TabLayout() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   
+  // On Android, add bottom inset so the tab bar (icons + labels) sits above the system nav and isn't covered
+  const tabBarBottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 12) : 20;
+  const tabBarHeight = Platform.OS === 'android' ? 85 + tabBarBottomPadding - 20 : 85;
+
   // Request notification permissions as soon as user is logged in
   useNotifications();
 
@@ -157,13 +166,14 @@ export default function TabLayout() {
             headerShown: false,
             tabBarActiveTintColor: '#FF8C42',
             tabBarInactiveTintColor: '#999',
+            tabBarShowLabel: true,
             tabBarStyle: {
               backgroundColor: 'white',
               borderTopWidth: 1,
               borderTopColor: '#eee',
               paddingTop: 8,
-              paddingBottom: 20,
-              height: 85,
+              paddingBottom: tabBarBottomPadding,
+              height: tabBarHeight,
             },
             tabBarLabelStyle: {
               fontSize: 12,
@@ -216,6 +226,11 @@ export default function TabLayout() {
               tabBarIcon: ({ size, color }) => (
                 <ChatTabIcon size={size} color={color} />
               ),
+              listeners: {
+                tabPress: () => {
+                  router.navigate('/chats');
+                },
+              },
             }}
           />
           <Tabs.Screen

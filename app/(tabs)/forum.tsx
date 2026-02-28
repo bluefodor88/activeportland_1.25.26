@@ -29,7 +29,6 @@ import {
 import ImageView from "react-native-image-viewing";
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-
 export default function ForumScreen() {
   const { activityId, activity, skillLevel, emoji, touchForumLastSeen } = useActivityStore();
 
@@ -207,7 +206,7 @@ export default function ForumScreen() {
       const chatId = await getOrCreateChat(user.id, message.user_id);
       if (chatId) {
         router.push({
-          pathname: '/chat/[id]',
+          pathname: '/chats/[id]',
           params: { id: message.user_id, name: message.profiles.name }
         });
       }
@@ -324,7 +323,13 @@ export default function ForumScreen() {
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             style={styles.messagesList}
-            contentContainerStyle={styles.messagesContainer}
+            contentContainerStyle={[styles.messagesContainer, messages.length === 0 && styles.messagesContainerEmpty]}
+            ListEmptyComponent={
+              <View style={styles.emptyForumState}>
+                <Text style={styles.emptyForumTitle}>No messages yet</Text>
+                <Text style={styles.emptyForumSubtitle}>Be the first to post in this activity</Text>
+              </View>
+            }
             onScrollToIndexFailed={(info)=>{
               flatListRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.5 });
             }}
@@ -530,6 +535,26 @@ const styles = StyleSheet.create({
   },
   messagesContainer: {
     padding: 16,
+  },
+  messagesContainerEmpty: {
+    flexGrow: 1,
+  },
+  emptyForumState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptyForumTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+    marginBottom: 4,
+  },
+  emptyForumSubtitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: '#999',
   },
   messageContainer: {
     backgroundColor: 'white',
@@ -747,6 +772,7 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     backgroundColor: 'white',
+    paddingBottom: 0,
   },
   previewContainer: {
     padding: 10,

@@ -79,7 +79,7 @@ export default function PeopleScreen() {
       const chatId = await getOrCreateChat(user.id, userId);
       if (chatId) {
         router.push({
-          pathname: '/chat/[id]',
+          pathname: '/chats/[id]',
           params: { id: userId, name: userName },
         });
       }

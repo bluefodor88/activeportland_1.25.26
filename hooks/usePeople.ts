@@ -49,24 +49,25 @@ export function usePeople() {
     
     setLoading(true)
 
-    let currentLoc = userLocation;
-    if (!currentLoc) {
-      currentLoc = await getCurrentLocation();
-      if (currentLoc) setUserLocation(currentLoc);
-    }
-    
-    try {
-      // Get list of blocked user IDs (only if user is logged in)
+    // Run location and data fetch in parallel so we never block on location alone.
+    // If location is unavailable or slow (e.g. Android), list still loads when Supabase returns.
+    const LOCATION_TIMEOUT_MS = 5000;
+    const locationPromise = userLocation
+      ? Promise.resolve(userLocation)
+      : Promise.race([
+          getCurrentLocation(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATION_TIMEOUT_MS)),
+        ]);
+
+    const fetchData = async () => {
       let blockedUserIds = new Set<string>();
       if (user) {
         const { data: blockedData } = await supabase
           .from('blocked_users')
           .select('blocked_user_id')
           .eq('user_id', user.id);
-        
         blockedUserIds = new Set(blockedData?.map(b => b.blocked_user_id) || []);
       }
-
       const { data, error } = await supabase
         .from('user_activity_skills')
         .select(`
@@ -88,8 +89,17 @@ export function usePeople() {
           )
         `)
         .eq('activity_id', activityId)
-        .not('profiles', 'is', null)
+        .not('profiles', 'is', null);
+      return { data, error, blockedUserIds };
+    };
 
+    const [currentLoc, { data, error, blockedUserIds }] = await Promise.all([
+      locationPromise,
+      fetchData(),
+    ]);
+    if (currentLoc) setUserLocation(currentLoc);
+
+    try {
       if (error) {
         console.log('Clearing people list - error:', error)
         console.error('Error fetching people:', error)

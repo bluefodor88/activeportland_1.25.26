@@ -4,7 +4,8 @@ import { ActivityProvider } from '@/contexts/ActivityContext';
 import { useChats } from '@/hooks/useChats';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useAuth } from '@/hooks/useAuth';
-import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useLocationPrompt } from '@/hooks/useLocationPrompt';
+import { View, Text, StyleSheet, Platform, Modal, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfile } from '@/hooks/useProfile';
 import { supabase } from '@/lib/supabase';
@@ -146,12 +147,102 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
   },
+  locationModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  locationModalBox: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 340,
+  },
+  locationModalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 12,
+  },
+  locationModalMessage: {
+    fontSize: 16,
+    fontFamily: 'Inter_400Regular',
+    color: '#666',
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  locationModalCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  locationModalCheckbox: {
+    width: 22,
+    height: 22,
+    borderWidth: 2,
+    borderColor: '#ccc',
+    borderRadius: 6,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  locationModalCheckboxChecked: {
+    backgroundColor: '#FF8C42',
+    borderColor: '#FF8C42',
+  },
+  locationModalCheckboxLabel: {
+    fontSize: 15,
+    fontFamily: 'Inter_500Medium',
+    color: '#333',
+  },
+  locationModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'flex-end',
+  },
+  locationModalButtonSecondary: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  locationModalButtonSecondaryText: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#666',
+  },
+  locationModalButtonPrimary: {
+    backgroundColor: '#FF8C42',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  locationModalButtonPrimaryText: {
+    fontSize: 16,
+    fontFamily: 'Inter_700Bold',
+    fontWeight: 'bold',
+    color: '#fff',
+  },
 });
 
 export default function TabLayout() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  
+  const {
+    showLocationPrompt,
+    isLocationRePrompt,
+    dismissLocationPrompt,
+    requestLocationThenDismiss,
+  } = useLocationPrompt();
+  const [locationDontAskAgain, setLocationDontAskAgain] = useState(false);
+
+  useEffect(() => {
+    if (showLocationPrompt) setLocationDontAskAgain(false);
+  }, [showLocationPrompt]);
+
   // On Android, add bottom inset so the tab bar (icons + labels) sits above the system nav and isn't covered
   const tabBarBottomPadding = Platform.OS === 'android' ? Math.max(insets.bottom, 12) : 20;
   const tabBarHeight = Platform.OS === 'android' ? 85 + tabBarBottomPadding - 20 : 85;
@@ -159,8 +250,50 @@ export default function TabLayout() {
   // Request notification permissions as soon as user is logged in
   useNotifications();
 
+  const handleLocationNotNow = () => {
+    dismissLocationPrompt(locationDontAskAgain);
+  };
+
+  const handleLocationTurnOn = () => {
+    requestLocationThenDismiss(locationDontAskAgain);
+  };
+
   return (
     <ActivityProvider>
+        <Modal
+          visible={showLocationPrompt}
+          transparent
+          animationType="fade"
+        >
+          <View style={styles.locationModalOverlay}>
+            <View style={styles.locationModalBox}>
+              <Text style={styles.locationModalTitle}>Turn on location?</Text>
+              <Text style={styles.locationModalMessage}>
+                Use your location to find people nearby and share where you are for meetups.
+              </Text>
+              {isLocationRePrompt && (
+                <TouchableOpacity
+                  style={styles.locationModalCheckboxRow}
+                  onPress={() => setLocationDontAskAgain((prev) => !prev)}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.locationModalCheckbox, locationDontAskAgain && styles.locationModalCheckboxChecked]}>
+                    {locationDontAskAgain && <Ionicons name="checkmark" size={16} color="#fff" />}
+                  </View>
+                  <Text style={styles.locationModalCheckboxLabel}>Don't ask again</Text>
+                </TouchableOpacity>
+              )}
+              <View style={styles.locationModalButtons}>
+                <TouchableOpacity style={styles.locationModalButtonPrimary} onPress={handleLocationTurnOn}>
+                  <Text style={styles.locationModalButtonPrimaryText}>Turn on</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.locationModalButtonSecondary} onPress={handleLocationNotNow}>
+                  <Text style={styles.locationModalButtonSecondaryText}>Not now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
         <Tabs
           screenOptions={{
             headerShown: false,

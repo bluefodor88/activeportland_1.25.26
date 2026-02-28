@@ -1,9 +1,11 @@
 import { ActivityCarousel } from '@/components/ActivityCarousel';
 import ForumMessageItem from '@/components/ForumMessageItem';
+import { ReactionPicker, type ReactionPickerLayout } from '@/components/ReactionPicker';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { useAuth } from '@/hooks/useAuth';
 import { getOrCreateChat } from '@/hooks/useChats';
 import { useForumMessages } from '@/hooks/useForumMessages';
+import { useMessageReactions } from '@/hooks/useMessageReactions';
 import { useProfile } from '@/hooks/useProfile';
 import { useActivityStore } from '@/store/useActivityStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +35,15 @@ export default function ForumScreen() {
   const { activityId, activity, skillLevel, emoji, touchForumLastSeen } = useActivityStore();
 
   const { messages, loading, sendMessage } = useForumMessages(activityId);
+  const messageIds = messages.map((m) => m.id);
+  const { getReactions, getCurrentUserEmoji, toggleReaction } = useMessageReactions(
+    messageIds,
+    'forum'
+  );
+  const [reactionPickerState, setReactionPickerState] = useState<{
+    messageId: string;
+    layout: ReactionPickerLayout;
+  } | null>(null);
   const { profile } = useProfile();
   const { user } = useAuth();
   const [newMessage, setNewMessage] = useState('');
@@ -189,10 +200,19 @@ export default function ForumScreen() {
     }
   };
 
-  const handleLongPress = (message: any) => {
-    if (message.user_id === user?.id) return; // Don't allow replying to own messages
-    
+  const handleLongPress = (message: any, layout?: ReactionPickerLayout) => {
+    if (layout) {
+      setReactionPickerState({ messageId: message.id, layout });
+      return;
+    }
+    if (message.user_id === user?.id) return;
     setReplyingTo(message);
+  };
+
+  const handleReactionSelect = (emoji: string) => {
+    if (!reactionPickerState) return;
+    toggleReaction(reactionPickerState.messageId, emoji);
+    setReactionPickerState(null);
   };
 
   const cancelReply = () => {
@@ -266,6 +286,8 @@ export default function ForumScreen() {
           highlightedId={highlightedMessageId}
           skillLevel={skillLevel}
           onLongPress={handleLongPress}
+          reactions={getReactions(item.id)}
+          currentUserEmoji={getCurrentUserEmoji(item.id)}
           onOpenChat={openUserChat}
           onOpenGallery={openGallery}
           onScrollToMessage={scrollToMessage}
@@ -291,6 +313,12 @@ export default function ForumScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
+      <ReactionPicker
+        visible={!!reactionPickerState}
+        anchorLayout={reactionPickerState?.layout ?? null}
+        onSelect={handleReactionSelect}
+        onClose={() => setReactionPickerState(null)}
+      />
       <ActivityCarousel />
       <KeyboardAvoidingView 
         style={styles.keyboardContainer}
@@ -464,7 +492,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'visible',
     zIndex: 1,
-    position: 'relative',
   },
   headerGradient: {
     position: 'absolute',

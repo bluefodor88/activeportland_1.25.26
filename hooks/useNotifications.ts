@@ -77,9 +77,6 @@ export function useNotifications() {
       } else if (data?.type === 'forum_message') {
         router.push('/(tabs)/forum');
       } else if (data?.type === 'event_reminder' && data?.meetingId) {
-        // For event reminders, we need to find the chat associated with this meeting
-        // The meeting data should include the other person's user ID
-        // For now, navigate to chats tab - we can enhance this to go directly to the chat
         router.push('/(tabs)/chats');
       }
     });

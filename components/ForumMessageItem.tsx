@@ -18,7 +18,9 @@ import Animated, {
   interpolateColor,
 } from 'react-native-reanimated';
 import RepliedToMessage from './RepliedToMessage';
+import { ReactionDisplay } from './ReactionDisplay';
 import { ICONS } from '@/lib/helperUtils';
+import type { ReactionSummary } from '@/hooks/useMessageReactions';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -31,10 +33,25 @@ const ForumMessageItem = React.memo(
     highlightedId,
     skillLevel,
     onLongPress,
+    reactions = [],
+    currentUserEmoji = null,
     onOpenChat,
     onOpenGallery,
     onScrollToMessage,
-  }: any) => {
+  }: {
+    item: any;
+    currentUserId?: string;
+    profileName?: string;
+    messages: any[];
+    highlightedId?: string | null;
+    skillLevel?: string;
+    onLongPress: (message: any, layout?: { x: number; y: number; width: number; height: number }) => void;
+    reactions?: ReactionSummary[];
+    currentUserEmoji?: string | null;
+    onOpenChat: (message: any) => void;
+    onOpenGallery: (urls: string[], index: number) => void;
+    onScrollToMessage: (id: string) => void;
+  }) => {
     const isMe =
       item.profiles?.name?.toLowerCase() === profileName?.toLowerCase();
     const userName = isMe ? 'You' : item.profiles?.name || 'Unknown';
@@ -109,86 +126,106 @@ const ForumMessageItem = React.memo(
       ? messages.find((msg: any) => msg.id === item.reply_to_id)
       : null;
 
+    const containerRef = useRef<View>(null);
+
+    const handleLongPress = () => {
+      containerRef.current?.measureInWindow((x, y, width, height) => {
+        onLongPress(item, { x, y, width, height });
+      });
+    };
+
     return (
-      <AnimatedPressable
-        style={[styles.messageContainer, { gap: 12 }, animatedStyle]} // Apply animated style here
-        onLongPress={() => onLongPress(item)}
-        delayLongPress={500}
-      >
-        <View style={styles.messageContent}>
-          <TouchableOpacity
-            onPress={() => {
-              if (item.user_id && item.user_id !== currentUserId) {
-                router.push({
-                  pathname: '/(tabs)/people/[id]',
-                  params: { id: item.user_id, name: item.profiles?.name, from: 'forum' },
-                });
-              }
-            }}
-            disabled={!item.user_id || item.user_id === currentUserId}
-          >
-            <Image
-              source={avatarUrl ? { uri: avatarUrl } : ICONS.profileIcon}
-              style={styles.messageAvatar}
-            />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <View style={styles.messageHeader}>
-              <TouchableOpacity onPress={() => onOpenChat(item)}>
-                <Text
-                  style={[styles.userName, !isMe && styles.clickableUserName]}
-                >
-                  {userName}
-                </Text>
-              </TouchableOpacity>
-              <View
-                style={[
-                  styles.skillBadge,
-                  { backgroundColor: getSkillColor(userSkillLevel) },
-                ]}
-              >
-                <Text style={styles.skillText}>{userSkillLevel}</Text>
-              </View>
-            </View>
-            {item.message ? (
-              <Text style={styles.messageText}>
-                {renderMessageText(item.message)}
-              </Text>
-            ) : null}
-
-            {hasImages && (
-              <View style={styles.imageGrid}>
-                {item.image_urls.map((url: string, index: number) => (
-                  <TouchableOpacity
-                    key={index}
-                    onPress={() => onOpenGallery(item.image_urls, index)}
-                    activeOpacity={0.9}
+      <View ref={containerRef} collapsable={false} style={styles.messageWrapper}>
+        <AnimatedPressable
+          style={[styles.messageContainer, { gap: 12 }, animatedStyle]}
+          onLongPress={handleLongPress}
+          delayLongPress={500}
+        >
+          <View style={styles.messageContent}>
+            <TouchableOpacity
+              onPress={() => {
+                if (item.user_id && item.user_id !== currentUserId) {
+                  router.push({
+                    pathname: '/(tabs)/people/[id]',
+                    params: { id: item.user_id, name: item.profiles?.name, from: 'forum' },
+                  });
+                }
+              }}
+              disabled={!item.user_id || item.user_id === currentUserId}
+            >
+              <Image
+                source={avatarUrl ? { uri: avatarUrl } : ICONS.profileIcon}
+                style={styles.messageAvatar}
+              />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <View style={styles.messageHeader}>
+                <TouchableOpacity onPress={() => onOpenChat(item)}>
+                  <Text
+                    style={[styles.userName, !isMe && styles.clickableUserName]}
                   >
-                    <Image
-                      source={{ uri: url }}
-                      style={[
-                        styles.messageImage,
-                        item.image_urls.length > 1
-                          ? styles.gridImage
-                          : styles.singleImage,
-                      ]}
-                    />
-                  </TouchableOpacity>
-                ))}
+                    {userName}
+                  </Text>
+                </TouchableOpacity>
+                <View
+                  style={[
+                    styles.skillBadge,
+                    { backgroundColor: getSkillColor(userSkillLevel) },
+                  ]}
+                >
+                  <Text style={styles.skillText}>{userSkillLevel}</Text>
+                </View>
               </View>
-            )}
-          </View>
-        </View>
+              {item.message ? (
+                <Text style={styles.messageText}>
+                  {renderMessageText(item.message)}
+                </Text>
+              ) : null}
 
-        {replyToMessage && (
-          <RepliedToMessage
-            replyToId={item.reply_to_id}
-            replyToMessage={replyToMessage}
-            messageItem={item}
-            scrollToMessage={onScrollToMessage}
-          />
+              {hasImages && (
+                <View style={styles.imageGrid}>
+                  {item.image_urls.map((url: string, index: number) => (
+                    <TouchableOpacity
+                      key={index}
+                      onPress={() => onOpenGallery(item.image_urls, index)}
+                      activeOpacity={0.9}
+                    >
+                      <Image
+                        source={{ uri: url }}
+                        style={[
+                          styles.messageImage,
+                          item.image_urls.length > 1
+                            ? styles.gridImage
+                            : styles.singleImage,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {replyToMessage && (
+            <RepliedToMessage
+              replyToId={item.reply_to_id}
+              replyToMessage={replyToMessage}
+              messageItem={item}
+              scrollToMessage={onScrollToMessage}
+            />
+          )}
+        </AnimatedPressable>
+
+        {reactions.length > 0 && (
+          <View style={styles.reactionAnchor}>
+            <ReactionDisplay
+              reactions={reactions}
+              currentUserEmoji={currentUserEmoji}
+              compact
+            />
+          </View>
         )}
-      </AnimatedPressable>
+      </View>
     );
   }
 );
@@ -196,13 +233,16 @@ const ForumMessageItem = React.memo(
 export default ForumMessageItem;
 
 const styles = StyleSheet.create({
+  messageWrapper: {
+    position: 'relative',
+    marginBottom: 12,
+  },
   messageContainer: {
     backgroundColor: 'white',
     padding: 16,
     borderRadius: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#FFCF56',
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -212,6 +252,14 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 2,
     transform: [{ scale: 1 }],
+  },
+  reactionAnchor: {
+    position: 'absolute',
+    bottom: -12,
+    right: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
   },
   messageAvatar: {
     width: 40,

@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   NativeModules,
   Keyboard,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ImageView from "react-native-image-viewing";
@@ -24,10 +25,13 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useChatMessages } from '@/hooks/useChatMessages';
+import { useMessageReactions } from '@/hooks/useMessageReactions';
 import { useAuth } from '@/hooks/useAuth';
 import { getOrCreateChat, useChats } from '@/hooks/useChats';
 import { supabase } from '@/lib/supabase';
 import { LoadingSpinner } from '@/components/LoadingSpinner';
+import { ReactionDisplay } from '@/components/ReactionDisplay';
+import { ReactionPicker, type ReactionPickerLayout } from '@/components/ReactionPicker';
 import { ParticipantSelector } from '@/components/ParticipantSelector';
 import { useActivities } from '@/hooks/useActivities';
 import { ICONS } from '@/lib/helperUtils';
@@ -97,6 +101,16 @@ export default function ChatScreen() {
   const { user } = useAuth();
   const { markAsRead, setActiveChat } = useChats();
   const { messages, loading: messagesLoading, error: messagesError, sendMessage } = useChatMessages(chatId);
+  const chatMessageIds = (messages || []).map((m) => m.id);
+  const { getReactions, getCurrentUserEmoji, toggleReaction } = useMessageReactions(
+    chatMessageIds,
+    'chat'
+  );
+  const [reactionPickerState, setReactionPickerState] = useState<{
+    messageId: string;
+    layout: ReactionPickerLayout;
+  } | null>(null);
+  const messageLayoutRefs = useRef<Record<string, View | null>>({});
   const { activities } = useActivities();
   const { inviteParticipants } = useEventParticipants();
   const flatListRef = useRef<FlatList>(null);
@@ -420,8 +434,16 @@ export default function ChatScreen() {
   };
 
   const handleScheduleEvent = async () => {
-    if (!eventLocation?.trim() || !selectedDate || !selectedTime || !user || !chatId || !id) {
-      Alert.alert('Missing Information', 'Please fill in all required fields');
+    if (!user || !chatId || !id) {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+      return;
+    }
+    if (!selectedDate || !selectedTime) {
+      Alert.alert('Date & time required', 'Please select a date and time before sending the invite.');
+      return;
+    }
+    if (!eventLocation?.trim()) {
+      Alert.alert('Location required', 'Please enter or select a location.');
       return;
     }
 
@@ -618,52 +640,91 @@ export default function ChatScreen() {
     const isRead =
       !!otherLastRead && new Date(otherLastRead).getTime() >= new Date(item.created_at).getTime();
     const isDelivered = !!otherLastRead && !isRead;
+
+    const handleLongPress = () => {
+      const view = messageLayoutRefs.current[item.id];
+      view?.measureInWindow((x, y, width, height) => {
+        setReactionPickerState({
+          messageId: item.id,
+          layout: { x, y, width, height },
+        });
+      });
+    };
     
     return (
-      <View style={[styles.messageContainer, isMe ? styles.myMessage : styles.otherMessage]}>
-        {/* Render Image Gallery */}
-        {hasImages && (
-          <View style={styles.imageGrid}>
-            {item.image_urls.map((url: string, index: number) => (
-              <TouchableOpacity 
-                key={index}
-                onPress={() => openGallery(item.image_urls, index)}
-                activeOpacity={0.9}
-              >
-                <Image 
-                  source={{ uri: url }} 
-                  style={[
-                    styles.messageImage, 
-                    item.image_urls.length > 1 ? styles.gridImage : styles.singleImage
+      <TouchableOpacity
+        activeOpacity={1}
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+      >
+      <View
+        ref={(r) => {
+          if (r) messageLayoutRefs.current[item.id] = r;
+        }}
+        style={[styles.messageWrapper, isMe ? styles.myMessageWrapper : styles.otherMessageWrapper]}
+      >
+        <View style={[styles.messageContainer, isMe ? styles.myMessage : styles.otherMessage]}>
+          {/* Render Image Gallery */}
+          {hasImages && (
+            <View style={styles.imageGrid}>
+              {item.image_urls.map((url: string, index: number) => (
+                <TouchableOpacity 
+                  key={index}
+                  onPress={() => openGallery(item.image_urls, index)}
+                  activeOpacity={0.9}
+                >
+                  <Image 
+                    source={{ uri: url }} 
+                    style={[
+                      styles.messageImage, 
+                      item.image_urls.length > 1 ? styles.gridImage : styles.singleImage
                   ]} 
                   resizeMode="cover"
                 />
               </TouchableOpacity>
             ))}
           </View>
-        )}
-        
-        {item.message ? (
-        <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.otherMessageText]}>
-             {renderMessageText(item.message, isMe)}
-        </Text>
-        ) : null}
-        
-        <View style={[styles.timestampRow, isMe ? styles.myTimestampRow : styles.otherTimestampRow]}>
-          <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.otherTimestamp]}>
-            {formatTime(item.created_at)}
-          </Text>
-          {isMe && (
-            <Ionicons
-              name={isRead || isDelivered ? 'checkmark-done' : 'checkmark'}
-              size={14}
-              color={isRead ? '#FFE2B5' : '#A0A0A0'}
-              style={styles.tickIcon}
-            />
           )}
+          
+          {(item.message ? (
+            <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.otherMessageText]}>
+              {renderMessageText(item.message, isMe)}
+            </Text>
+          ) : null)}
+          
+          <View style={[styles.timestampRow, isMe ? styles.myTimestampRow : styles.otherTimestampRow]}>
+            <Text style={[styles.timestamp, isMe ? styles.myTimestamp : styles.otherTimestamp]}>
+              {formatTime(item.created_at)}
+            </Text>
+            {isMe && (
+              <Ionicons
+                name={isRead || isDelivered ? 'checkmark-done' : 'checkmark'}
+                size={14}
+                color={isRead ? '#FFE2B5' : '#A0A0A0'}
+                style={styles.tickIcon}
+              />
+            )}
+          </View>
         </View>
+
+        {getReactions(item.id).length > 0 && (
+          <View style={styles.reactionAnchor}>
+            <ReactionDisplay
+              reactions={getReactions(item.id)}
+              currentUserEmoji={getCurrentUserEmoji(item.id)}
+              compact
+            />
+          </View>
+        )}
       </View>
+      </TouchableOpacity>
     );
+  };
+
+  const handleReactionSelect = (emoji: string) => {
+    if (!reactionPickerState) return;
+    toggleReaction(reactionPickerState.messageId, emoji);
+    setReactionPickerState(null);
   };
 
   const renderAcceptedMeeting = ({ item }: { item: any }) => {
@@ -922,6 +983,12 @@ export default function ChatScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <StatusBar style="dark" />
+      <ReactionPicker
+        visible={!!reactionPickerState}
+        anchorLayout={reactionPickerState?.layout ?? null}
+        onSelect={handleReactionSelect}
+        onClose={() => setReactionPickerState(null)}
+      />
       
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
@@ -1121,7 +1188,7 @@ export default function ChatScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Let's make a plan?</Text>
+            <Text style={styles.modalTitle}>Let's make a plan!</Text>
             <View style={styles.modalTitleSpacer} />
             <LinearGradient
               colors={['#FFE8B5', '#FFCF56', '#FFE8B5']}
@@ -1299,6 +1366,25 @@ export default function ChatScreen() {
               </View>
 
               <View style={styles.formInputContainer}>
+                <Text style={styles.inputLabel}>Add people (optional)</Text>
+                <Text style={styles.inputSubLabel}>
+                  Invite up to 7 more people to this meetup
+                </Text>
+                <View style={styles.alreadyInvitedRow}>
+                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                  <Text style={styles.alreadyInvitedText}>
+                    Already invited: {name || 'Chat partner'}
+                  </Text>
+                </View>
+                <ParticipantSelector
+                  selectedParticipants={selectedParticipants}
+                  onParticipantsChange={setSelectedParticipants}
+                  maxParticipants={7}
+                  excludedUserIds={[user?.id || '', id]}
+                />
+              </View>
+
+              <View style={styles.formInputContainer}>
                 <Text style={styles.inputLabel}>Date</Text>
                 <TouchableOpacity
                   style={styles.datePickerButton}
@@ -1382,32 +1468,17 @@ export default function ChatScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              <View style={styles.formInputContainer}>
-                <Text style={styles.inputLabel}>Bring someone along?</Text>
-                <Text style={styles.inputSubLabel}>
-                  Add up to 7 people to join this meetup
-                </Text>
-                <View style={styles.alreadyInvitedRow}>
-                  <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                  <Text style={styles.alreadyInvitedText}>
-                    Already invited: {name || 'Chat partner'}
-                  </Text>
-                </View>
-                <ParticipantSelector
-                  selectedParticipants={selectedParticipants}
-                  onParticipantsChange={setSelectedParticipants}
-                  maxParticipants={7}
-                  excludedUserIds={[user?.id || '', id]}
-                />
-              </View>
             </ScrollView>
             
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                style={[styles.scheduleConfirmButton, isInviting && { opacity: 0.7 }]}
+                style={[
+                  styles.scheduleConfirmButton,
+                  isInviting && { opacity: 0.7 },
+                  (!selectedDate || !selectedTime) && styles.scheduleConfirmButtonDisabled,
+                ]}
                 onPress={handleScheduleEvent}
-                disabled={isInviting}
+                disabled={isInviting || !selectedDate || !selectedTime}
               >
                 {
                   isInviting ? (
@@ -1669,19 +1740,26 @@ const styles = StyleSheet.create({
   messagesContainer: {
     padding: 16,
   },
-  messageContainer: {
-    maxWidth: '80%',
+  messageWrapper: {
+    position: 'relative',
     marginBottom: 12,
+    maxWidth: '80%',
+  },
+  myMessageWrapper: {
+    alignSelf: 'flex-end',
+  },
+  otherMessageWrapper: {
+    alignSelf: 'flex-start',
+  },
+  messageContainer: {
     padding: 12,
     borderRadius: 16,
   },
   myMessage: {
-    alignSelf: 'flex-end',
     backgroundColor: '#FF8C42',
     borderBottomRightRadius: 4,
   },
   otherMessage: {
-    alignSelf: 'flex-start',
     backgroundColor: 'white',
     borderBottomLeftRadius: 4,
     shadowColor: '#000',
@@ -1719,6 +1797,14 @@ const styles = StyleSheet.create({
   },
   otherTimestampRow: {
     justifyContent: 'flex-start',
+  },
+  reactionAnchor: {
+    position: 'absolute',
+    bottom: -12,
+    right: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
   },
   myTimestamp: {
     color: 'rgba(255, 255, 255, 0.8)',
@@ -1925,7 +2011,9 @@ const styles = StyleSheet.create({
     margin: 20,
     width: '90%',
     maxWidth: 400,
-    maxHeight: '80%',
+    height: Dimensions.get('window').height * 0.85,
+    maxHeight: 600,
+    flexDirection: 'column',
   },
   modalTitle: {
     fontSize: 20,
@@ -1950,10 +2038,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   modalScrollView: {
-    maxHeight: 420,
+    flex: 1,
+    minHeight: 200,
   },
   modalScrollContent: {
-    paddingBottom: 0,
+    paddingBottom: 16,
   },
   formInputContainer: {
     marginBottom: 20,
@@ -2317,7 +2406,10 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   modalButtons: {
-    marginTop: 2,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   scheduleConfirmButton: {
     backgroundColor: '#4CAF50',
@@ -2325,6 +2417,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  scheduleConfirmButtonDisabled: {
+    backgroundColor: '#9E9E9E',
+    opacity: 0.9,
   },
   scheduleConfirmText: {
     color: 'white',

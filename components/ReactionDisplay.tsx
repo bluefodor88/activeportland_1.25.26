@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { ReactionSummary } from '@/hooks/useMessageReactions';
 
 interface ReactionDisplayProps {
@@ -7,25 +7,49 @@ interface ReactionDisplayProps {
   currentUserEmoji: string | null;
   /** When true, no top margin (e.g. for chat bubble corner) */
   compact?: boolean;
+  /** When provided, tapping your own reaction removes it */
+  onRemoveReaction?: (emoji: string) => void;
 }
+
+const HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
 export function ReactionDisplay({
   reactions,
   currentUserEmoji,
   compact = false,
+  onRemoveReaction,
 }: ReactionDisplayProps) {
   if (!reactions || reactions.length === 0) return null;
 
   return (
     <View style={[styles.container, compact && styles.containerCompact]}>
-      {reactions.map((r) => (
-        <View key={r.emoji} style={styles.pill}>
-          <Text style={styles.emoji}>{r.emoji}</Text>
-          {r.count > 1 && (
-            <Text style={styles.count}>{r.count}</Text>
-          )}
-        </View>
-      ))}
+      {reactions.map((r) => {
+        const isMine = currentUserEmoji === r.emoji;
+        const canRemove = isMine && onRemoveReaction;
+        const handleRemove = () => {
+          if (canRemove) onRemoveReaction(r.emoji);
+        };
+        const PillWrapper = canRemove ? TouchableOpacity : View;
+        return (
+          <PillWrapper
+            key={r.emoji}
+            style={styles.pill}
+            onPress={canRemove ? handleRemove : undefined}
+            activeOpacity={canRemove ? 0.6 : 1}
+            hitSlop={canRemove ? HIT_SLOP : undefined}
+            accessible={canRemove}
+            accessibilityRole={canRemove ? 'button' : undefined}
+            accessibilityLabel={canRemove ? `Remove ${r.emoji} reaction` : undefined}
+          >
+            <View style={styles.pillInner}>
+              <Text style={styles.emoji}>{r.emoji}</Text>
+              {r.count > 1 && (
+                <Text style={styles.count}>{r.count}</Text>
+              )}
+            </View>
+          </PillWrapper>
+        );
+      })}
     </View>
   );
 }
@@ -41,10 +65,14 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   pill: {
+    minHeight: 36,
+    justifyContent: 'center',
+  },
+  pillInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 2,
-    paddingHorizontal: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
   emoji: {
     fontSize: 18,

@@ -41,6 +41,9 @@ export function useMessageReactions(
         }
 
         const byMessage: Record<string, ReactionSummary[]> = {};
+        ids.forEach((id) => {
+          byMessage[id] = [];
+        });
         (data || []).forEach((row: { message_id: string; user_id: string; emoji: string }) => {
           const id = row.message_id;
           if (!byMessage[id]) byMessage[id] = [];
@@ -117,6 +120,22 @@ export function useMessageReactions(
               console.error('Delete reaction error:', delError);
               return false;
             }
+            // Optimistic update: remove this user's reaction from UI immediately (fixes Android not updating until refresh)
+            setReactionsByMessageId((prev) => {
+              const list = prev[messageId] ?? [];
+              const next = list
+                .map((r) => {
+                  if (r.emoji !== emoji || !r.userIds.includes(user.id)) return r;
+                  if (r.count <= 1) return null;
+                  return {
+                    ...r,
+                    count: r.count - 1,
+                    userIds: r.userIds.filter((id) => id !== user.id),
+                  };
+                })
+                .filter((r): r is ReactionSummary => r !== null);
+              return { ...prev, [messageId]: next };
+            });
           } else {
             const { error: updError } = await supabase
               .from('message_reactions')
@@ -126,6 +145,22 @@ export function useMessageReactions(
               console.error('Update reaction error:', updError);
               return false;
             }
+            // Optimistic: move user from old emoji pill to new one
+            setReactionsByMessageId((prev) => {
+              const list = prev[messageId] ?? [];
+              const withoutMe = list
+                .map((r) => {
+                  if (!r.userIds.includes(user.id)) return r;
+                  if (r.count <= 1) return null;
+                  return { ...r, count: r.count - 1, userIds: r.userIds.filter((id) => id !== user.id) };
+                })
+                .filter((r): r is ReactionSummary => r !== null);
+              const existingNew = withoutMe.find((r) => r.emoji === emoji);
+              const next = existingNew
+                ? withoutMe.map((r) => (r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, user.id] } : r))
+                : [...withoutMe, { emoji, count: 1, userIds: [user.id] }];
+              return { ...prev, [messageId]: next };
+            });
           }
         } else {
           const { error } = await supabase.from('message_reactions').insert({
@@ -138,8 +173,17 @@ export function useMessageReactions(
             console.error('Insert reaction error:', error);
             return false;
           }
+          // Optimistic: add new reaction pill or increment
+          setReactionsByMessageId((prev) => {
+            const list = prev[messageId] ?? [];
+            const existingPill = list.find((r) => r.emoji === emoji);
+            const next = existingPill
+              ? list.map((r) => (r.emoji === emoji ? { ...r, count: r.count + 1, userIds: [...r.userIds, user.id] } : r))
+              : [...list, { emoji, count: 1, userIds: [user.id] }];
+            return { ...prev, [messageId]: next };
+          });
         }
-        // Refetch this message's reactions so UI updates immediately (don't rely only on realtime)
+        // Refetch to stay in sync with server (realtime may be delayed on Android)
         await fetchReactions([messageId]);
         return true;
       } catch (e) {

@@ -38,6 +38,7 @@ const ForumMessageItem = React.memo(
     onOpenChat,
     onOpenGallery,
     onScrollToMessage,
+    onRemoveReaction,
   }: {
     item: any;
     currentUserId?: string;
@@ -51,6 +52,7 @@ const ForumMessageItem = React.memo(
     onOpenChat: (message: any) => void;
     onOpenGallery: (urls: string[], index: number) => void;
     onScrollToMessage: (id: string) => void;
+    onRemoveReaction?: (messageId: string, emoji: string) => void;
   }) => {
     const isMe =
       item.profiles?.name?.toLowerCase() === profileName?.toLowerCase();
@@ -222,6 +224,7 @@ const ForumMessageItem = React.memo(
               reactions={reactions}
               currentUserEmoji={currentUserEmoji}
               compact
+              onRemoveReaction={onRemoveReaction ? (emoji) => onRemoveReaction(item.id, emoji) : undefined}
             />
           </View>
         )}

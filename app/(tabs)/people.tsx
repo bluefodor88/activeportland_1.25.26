@@ -58,13 +58,10 @@ export default function PeopleScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    
-    // 1. Check permissions and get latest location
+    // 1. Check permissions and update location in DB (no error if unavailable)
     await requestLocationPermission();
-    
-    // 2. Reload the list
-    await refetch();
-    
+    // 2. Reload the list; try to get location so distances update after granting permission
+    await refetch({ tryLocation: true });
     setRefreshing(false);
   };
 

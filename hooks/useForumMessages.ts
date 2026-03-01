@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import type { ForumMessage } from '@/types/database'
@@ -8,30 +8,39 @@ import * as ImagePicker from 'expo-image-picker'
 export function useForumMessages(activityId?: string) {
   const { user } = useAuth()
   const [messages, setMessages] = useState<ForumMessage[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const currentActivityIdRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
-    if (activityId) {
-      // 1. Load initial messages
-      fetchMessages(true) 
-      
-      // 2. Set up real-time listener
-      const subscription = supabase
-        .channel(`forum_messages_${activityId}`)
-        .on('postgres_changes', 
-          { 
-            event: 'INSERT', 
-            schema: 'public', 
-            table: 'forum_messages',
-            filter: `activity_id=eq.${activityId}`
-          }, 
-          () => fetchMessages(false)
-        )
-        .subscribe()
+    if (!activityId) {
+      setMessages([])
+      setLoading(false)
+      currentActivityIdRef.current = undefined
+      return
+    }
 
-      return () => {
-        supabase.removeChannel(subscription)
-      }
+    currentActivityIdRef.current = activityId
+    setMessages([])
+    setLoading(true)
+
+    const subscription = supabase
+      .channel(`forum_messages_${activityId}`)
+      .on('postgres_changes', 
+        { 
+          event: 'INSERT', 
+          schema: 'public', 
+          table: 'forum_messages',
+          filter: `activity_id=eq.${activityId}`
+        }, 
+        () => fetchMessages(false)
+      )
+      .subscribe()
+
+    fetchMessages(false)
+
+    return () => {
+      currentActivityIdRef.current = undefined
+      supabase.removeChannel(subscription)
     }
   }, [activityId])
 
@@ -47,11 +56,10 @@ export function useForumMessages(activityId?: string) {
     return true;
   };
 
-  const fetchMessages = async (showLoading = false) => {
-    if (!activityId) return
+  const fetchMessages = async (_showLoading = false) => {
+    const forActivityId = activityId
+    if (!forActivityId) return
 
-    if (showLoading) setLoading(true)
-      
     try {
       const { data, error } = await supabase
         .from('forum_messages')
@@ -78,21 +86,25 @@ export function useForumMessages(activityId?: string) {
             emoji
           )
         `)
-        .eq('activity_id', activityId)
+        .eq('activity_id', forActivityId)
         .order('created_at', { ascending: false })
+
+      if (currentActivityIdRef.current !== forActivityId) return
 
       if (error) {
         console.error('Error fetching forum messages:', error)
         setMessages([])
       } else {
-        console.log(`Fetched ${data?.length || 0} forum messages for activity ${activityId}`)
-      setMessages(data || [])
+        setMessages(data || [])
       }
     } catch (error) {
+      if (currentActivityIdRef.current !== forActivityId) return
       console.error('Error fetching messages:', error)
       setMessages([])
     } finally {
-      if (showLoading) setLoading(false)
+      if (currentActivityIdRef.current === forActivityId) {
+        setLoading(false)
+      }
     }
   }
 

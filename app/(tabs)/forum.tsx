@@ -291,24 +291,11 @@ export default function ForumScreen() {
           onOpenChat={openUserChat}
           onOpenGallery={openGallery}
           onScrollToMessage={scrollToMessage}
+          onRemoveReaction={(id, emoji) => toggleReaction(id, emoji)}
         />
       </View>
     );
   };
-
-  // Only show loading if we have an activity but messages are still loading
-  if (loading && activityId) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <StatusBar style="dark" />
-        <ActivityCarousel />
-        <View style={styles.loadingContainer}>
-          <LoadingSpinner size={32} />
-          <Text style={[styles.loadingText, { marginTop: 16 }]}>Loading messages...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -354,8 +341,17 @@ export default function ForumScreen() {
             contentContainerStyle={[styles.messagesContainer, messages.length === 0 && styles.messagesContainerEmpty]}
             ListEmptyComponent={
               <View style={styles.emptyForumState}>
-                <Text style={styles.emptyForumTitle}>No messages yet</Text>
-                <Text style={styles.emptyForumSubtitle}>Be the first to post in this activity</Text>
+                {loading ? (
+                  <>
+                    <LoadingSpinner size={28} />
+                    <Text style={[styles.emptyForumSubtitle, { marginTop: 12 }]}>Loading…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.emptyForumTitle}>No messages yet</Text>
+                    <Text style={styles.emptyForumSubtitle}>Be the first to post in this activity</Text>
+                  </>
+                )}
               </View>
             }
             onScrollToIndexFailed={(info)=>{

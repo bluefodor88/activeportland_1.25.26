@@ -30,6 +30,9 @@ let subscription: RealtimeChannel | null = null;
 let fetchInFlight = false;
 let lastFetchAt = 0;
 const FETCH_THROTTLE_MS = 1500;
+/** After subscription closes, don't resubscribe for this long (stops log loop on remounts) */
+const REALTIME_RESUBSCRIBE_COOLDOWN_MS = 60000;
+let lastRealtimeClosedAt = 0;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chats: [],
@@ -156,9 +159,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // NEW: Realtime Subscription
   subscribeToChanges: (userId: string) => {
     if (subscription) return; // Already subscribed
+    if (lastRealtimeClosedAt && Date.now() - lastRealtimeClosedAt < REALTIME_RESUBSCRIBE_COOLDOWN_MS) {
+      return; // Recently closed; skip to avoid loop
+    }
 
-    console.log("🔌 Connecting to Realtime Chat Updates...");
-    
     subscription = supabase
       .channel('public:chat_updates')
       // Listen for NEW chats being created (check if current user is a participant)
@@ -206,14 +210,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })
       .subscribe((status) => {
         if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Realtime chat subscription issue:', status);
-          setTimeout(() => {
-            if (subscription) {
-              supabase.removeChannel(subscription);
-              subscription = null;
-            }
-            get().subscribeToChanges(userId);
-          }, 2000);
+          lastRealtimeClosedAt = Date.now();
+          if (subscription) {
+            supabase.removeChannel(subscription);
+            subscription = null;
+          }
+          // No auto-resubscribe; cooldown prevents loop when components remount.
         }
       });
   },

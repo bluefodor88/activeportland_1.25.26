@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './useAuth'
 import { calculateDistance, formatDistance, getCurrentLocation } from '@/lib/locationUtils'
@@ -21,13 +21,16 @@ export function usePeople() {
   const [people, setPeople] = useState<PersonWithSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null)
+  const hadLocationRef = useRef(false)
 
-  // Effect 1: Get User Location ONCE on mount
+  // Effect 1: Get location once on mount (like main). Non-blocking with timeout so list loads fast.
   useEffect(() => {
-    getCurrentLocation().then((location) => {
-      if (location) {
-        setUserLocation(location);
-      }
+    const timeoutMs = 8000;
+    Promise.race([
+      getCurrentLocation(),
+      new Promise<null>((r) => setTimeout(() => r(null), timeoutMs)),
+    ]).then((location) => {
+      if (location) setUserLocation(location);
     });
   }, []);
 
@@ -41,7 +44,19 @@ export function usePeople() {
     }
   }, [activityId, user]);
 
-  const fetchPeople = async () => {
+  // Effect 3: When location first becomes available, re-fetch so distances and sort update
+  useEffect(() => {
+    if (userLocation && activityId) {
+      if (!hadLocationRef.current) {
+        hadLocationRef.current = true;
+        fetchPeople();
+      }
+    } else if (!userLocation) {
+      hadLocationRef.current = false;
+    }
+  }, [userLocation, activityId]);
+
+  const fetchPeople = async (options?: { tryLocation?: boolean }) => {
     if (!activityId) {
       setLoading(false)
       return
@@ -49,15 +64,15 @@ export function usePeople() {
     
     setLoading(true)
 
-    // Run location and data fetch in parallel so we never block on location alone.
-    // If location is unavailable or slow (e.g. Android), list still loads when Supabase returns.
-    const LOCATION_TIMEOUT_MS = 5000;
-    const locationPromise = userLocation
-      ? Promise.resolve(userLocation)
-      : Promise.race([
-          getCurrentLocation(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATION_TIMEOUT_MS)),
-        ]);
+    // If refetch with tryLocation (e.g. after pull-to-refresh), try to get location so we pick it up after user grants permission
+    let currentLoc = userLocation
+    if (options?.tryLocation && !currentLoc) {
+      currentLoc = await Promise.race([
+        getCurrentLocation(),
+        new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+      ])
+      if (currentLoc) setUserLocation(currentLoc)
+    }
 
     const fetchData = async () => {
       let blockedUserIds = new Set<string>();
@@ -93,11 +108,7 @@ export function usePeople() {
       return { data, error, blockedUserIds };
     };
 
-    const [currentLoc, { data, error, blockedUserIds }] = await Promise.all([
-      locationPromise,
-      fetchData(),
-    ]);
-    if (currentLoc) setUserLocation(currentLoc);
+    const { data, error, blockedUserIds } = await fetchData();
 
     try {
       if (error) {
@@ -149,7 +160,8 @@ export function usePeople() {
   // Helper to get formatted string
   const calculateDistanceForUser = (profile: any, currentLoc: any): string => {
     if (!profile.location_sharing_enabled) return 'Location private'
-    if (!currentLoc || !profile.latitude || !profile.longitude) return '...'
+    if (!profile.latitude || !profile.longitude) return '—'
+    if (!currentLoc) return ''
     
     const dist = calculateDistance(currentLoc, { latitude: profile.latitude, longitude: profile.longitude })
     return formatDistance(dist)

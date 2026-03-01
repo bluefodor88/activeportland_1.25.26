@@ -52,6 +52,8 @@ export function ActivityCarousel() {
   // Track scrolling state to prevent loops
   const isScrollingRef = useRef(false);
   const isAutoScrollingRef = useRef(false);
+  // Only show "Loading activities..." on true first load, not when switching activities
+  const hasLoadedOnceRef = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -93,6 +95,8 @@ export function ActivityCarousel() {
       }));
     }
   }, [user, userSkills, allActivities]);
+
+  if (displayActivities.length > 0) hasLoadedOnceRef.current = true;
 
   // Listen for Real-time database changes
   useEffect(() => {
@@ -265,7 +269,7 @@ export function ActivityCarousel() {
     setUnreadCounts((prev) => ({ ...prev, [activityId]: 0 }));
   }, [activityId]);
 
-  if (isLoading && displayActivities.length === 0) {
+  if (isLoading && displayActivities.length === 0 && !hasLoadedOnceRef.current) {
     return (
       <View style={styles.container}>
         <View style={styles.emptyContainer}>

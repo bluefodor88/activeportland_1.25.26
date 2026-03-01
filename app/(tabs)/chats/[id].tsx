@@ -713,6 +713,7 @@ export default function ChatScreen() {
               reactions={getReactions(item.id)}
               currentUserEmoji={getCurrentUserEmoji(item.id)}
               compact
+              onRemoveReaction={(emoji) => toggleReaction(item.id, emoji)}
             />
           </View>
         )}
@@ -1800,8 +1801,8 @@ const styles = StyleSheet.create({
   },
   reactionAnchor: {
     position: 'absolute',
-    bottom: -12,
-    right: 0,
+    bottom: -18,
+    right: -8,
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'flex-end',

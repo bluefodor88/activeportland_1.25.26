@@ -58,13 +58,19 @@ export function useLocationTracking() {
       const { status } = await Location.getForegroundPermissionsAsync()
       
       if (status !== 'granted') {
-        console.log('Permission not granted (checked inside updateLocation)')
         return
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      })
+      // Timeout so we don't hang when location is unavailable (e.g. simulator, disabled)
+      const timeoutMs = 10000
+      const currentLocation = await Promise.race([
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Location request timed out')), timeoutMs)
+        ),
+      ])
 
       const coordinates = {
         latitude: currentLocation.coords.latitude,
@@ -73,8 +79,8 @@ export function useLocationTracking() {
 
       setLocation(coordinates)
       await updateUserLocation(supabase, user.id, coordinates)
-    } catch (error) {
-      console.error('Error updating location:', error)
+    } catch {
+      // Location unavailable (simulator, disabled, or timeout) — fail silently so we don't surface a red error
     }
   }
 
